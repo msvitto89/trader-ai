@@ -19,9 +19,15 @@ import { createJournalEntry, createPosition, addWatchlist } from "../src/lib/db/
 import { DemoMarketDataProvider } from "../src/lib/market-data/demo";
 import type { JournalEntry, TradingStyle } from "../src/lib/types";
 
-const EMAIL = process.env.SEED_EMAIL ?? "demo@tradia.ai";
-const PASSWORD = process.env.SEED_PASSWORD ?? "tradia1234";
-const NAME = process.env.SEED_NAME ?? "Alex Trader";
+/**
+ * The account this script creates. On a hosted deploy (Render/Railway) the
+ * database lives on an ephemeral disk, so the account is re-created on every
+ * boot. The defaults below exist so a fresh deploy is usable with no extra
+ * configuration; PROVISION_EMAIL / PROVISION_PASSWORD override them.
+ */
+const EMAIL = process.env.PROVISION_EMAIL ?? process.env.SEED_EMAIL ?? "trader@tradia.ai";
+const PASSWORD = process.env.PROVISION_PASSWORD ?? process.env.SEED_PASSWORD ?? "TradiaPro2026!";
+const NAME = process.env.SEED_NAME ?? "Trader";
 /** Populate the sample journal / positions / alerts. Set to "0" for a clean workspace. */
 const WITH_SAMPLE_DATA = process.env.SEED_SAMPLE_DATA !== "0";
 const PLAN = (process.env.SEED_PLAN === "free" ? "free" : "pro") as "free" | "pro";
@@ -80,12 +86,21 @@ async function main() {
   getDb();
   const provider = new DemoMarketDataProvider();
 
-  const existing = queryOne<{ id: string }>("SELECT id FROM users WHERE email = ?", [EMAIL]);
+  // This account is a real login, so a restart must not wipe it: it is only
+  // rebuilt from scratch when SEED_RESET=1.
+  const targetEmail = EMAIL;
+
+  const existing = queryOne<{ id: string }>("SELECT id FROM users WHERE email = ?", [targetEmail]);
   let userId: string;
 
   if (existing) {
     userId = existing.id;
-    console.log(`Reusing existing demo account (${EMAIL})`);
+    if (process.env.SEED_RESET !== "1") {
+      execute("UPDATE users SET plan = ?, onboarded_at = COALESCE(onboarded_at, ?) WHERE id = ?", [PLAN, Date.now(), userId]);
+      console.log(`\nAccount ready (unchanged):\n  email:    ${targetEmail}\n  plan:     ${PLAN}\n  password: unchanged\n`);
+      return;
+    }
+    console.log(`Resetting workspace for ${targetEmail}`);
     execute("DELETE FROM paper_positions WHERE user_id = ?", [userId]);
     execute("DELETE FROM journal_entries WHERE user_id = ?", [userId]);
     execute("DELETE FROM alerts WHERE user_id = ?", [userId]);
@@ -98,7 +113,7 @@ async function main() {
       "INSERT INTO users (id, email, name, password_hash, plan, created_at, onboarded_at, preferences) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [
         userId,
-        EMAIL,
+        targetEmail,
         NAME,
         hashPassword(PASSWORD),
         PLAN,
@@ -107,7 +122,7 @@ async function main() {
         JSON.stringify({}),
       ],
     );
-    console.log(`Created demo account (${EMAIL} / ${PASSWORD})`);
+    console.log(`Created account (${targetEmail})`);
   }
 
   execute("UPDATE users SET plan = ?, onboarded_at = ? WHERE id = ?", [PLAN, Date.now() - 59 * DAY, userId]);

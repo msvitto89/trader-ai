@@ -13,13 +13,14 @@ services:
       # path. scripts/bootstrap.mjs re-provisions the account on each boot.
       - key: TRADIA_DB_PATH
         value: /tmp/tradia.db
-      # Set these in the Render dashboard (sync: false keeps them out of git).
-      - key: SEED_EMAIL
-        sync: false
-      - key: SEED_PASSWORD
-        sync: false
       - key: TRADIA_SESSION_SECRET
         generateValue: true
+      # Optional overrides. The image ships with a working account
+      # (trader@tradia.ai / TradiaPro2026!) so no variables are required.
+      - key: PROVISION_EMAIL
+        sync: false
+      - key: PROVISION_PASSWORD
+        sync: false
       - key: SEED_SAMPLE_DATA
         value: "1"
       - key: SEED_PLAN

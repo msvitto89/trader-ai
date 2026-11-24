@@ -2,54 +2,58 @@
  * Production entrypoint for hosts without a persistent disk.
  *
  * Free tiers (Render, Railway trial, Fly trial) wipe the filesystem between
- * restarts, so a seeded SQLite file never survives. This wrapper recreates the
- * account from environment variables before the server boots, which makes the
- * login stable across cold starts.
+ * restarts, so a seeded SQLite file never survives. This wrapper re-creates a
+ * working account before the server boots, which keeps the login stable across
+ * cold starts.
  *
- *   SEED_EMAIL=you@example.com
- *   SEED_PASSWORD=...        (set these in the host's dashboard)
- *   SEED_SAMPLE_DATA=1       sample journal + positions for a demo feel
- *   SEED_SAMPLE_DATA=0       empty workspace, no sample trades
+ * Defaults (see scripts/seed.ts) provision:
+ *   trader@tradia.ai / TradiaPro2026!   — Pro, onboarded, sample workspace
  *
- * Runs only when SEED_EMAIL and SEED_PASSWORD are present, so normal local
- * development is unaffected.
+ * Override with env vars:
+ *   PROVISION_EMAIL, PROVISION_PASSWORD  — your own credentials
+ *   SEED_SAMPLE_DATA=0                   — empty workspace, no sample trades
+ *   SEED_RESET=1                         — wipe and rebuild an existing account
+ *
+ * Set BOOTSTRAP=0 to skip provisioning entirely (e.g. on a host with a real
+ * persistent disk where you manage accounts yourself).
  */
 
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { resolve } from "node:path";
 
-const email = process.env.SEED_EMAIL;
-const password = process.env.SEED_PASSWORD;
+const databasePath = resolve(
+  process.cwd(),
+  process.env.TRADIA_DB_PATH ?? "./data/tradia.db",
+);
 
 function seed() {
   execFileSync("npx", ["tsx", "scripts/seed.ts"], { stdio: "inherit" });
 }
 
 function resetDatabase() {
-  const path = resolve(process.cwd(), process.env.TRADIA_DB_PATH ?? "./data/tradia.db");
   for (const suffix of ["", "-shm", "-wal"]) {
-    rmSync(`${path}${suffix}`, { force: true });
+    rmSync(`${databasePath}${suffix}`, { force: true });
   }
   console.log("[bootstrap] removed unusable database files");
 }
 
-if (!email || !password) {
-  console.log("[bootstrap] SEED_EMAIL/SEED_PASSWORD not set — skipping account provisioning.");
+if (process.env.BOOTSTRAP === "0") {
+  console.log("[bootstrap] BOOTSTRAP=0 — skipping provisioning.");
 } else {
-  console.log(`[bootstrap] provisioning account ${email}`);
+  console.log(`[bootstrap] database: ${databasePath}`);
   try {
     seed();
   } catch {
     // A half-written SQLite file (e.g. a container killed mid-write) makes
     // further writes fail with "disk I/O error". Start clean and retry once.
-    console.error("[bootstrap] seeding failed — resetting database and retrying");
+    console.error("[bootstrap] provisioning failed — resetting database and retrying");
     try {
       resetDatabase();
       seed();
     } catch {
       // Never block the server on seeding: a failed seed should still let the
-      // app boot so the operator can register manually.
+      // app boot so you can register manually.
       console.error("[bootstrap] retry failed — booting without a provisioned account");
     }
   }
