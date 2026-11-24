@@ -41,7 +41,7 @@ const REACH = 190; // px over which the wake can reach a glyph
 const FOLLOW_K = 0.17; // spring stiffness: how hard the circle chases the pointer
 const FOLLOW_DAMP = 0.8; // < 1, so it overshoots slightly instead of snapping
 const WAKE_MIN = 10; // px the effect sits behind the circle even at rest
-const WAKE_MAX = 46; // px of extra trail at full speed
+const WAKE_MAX = 32; // px of extra trail at full speed
 const SPEED_REF = 26; // px/frame that counts as "fast"
 
 type Glyph = {
@@ -110,8 +110,13 @@ export function MercuryHeadings() {
     const root = document.querySelector("main");
     if (!root) return;
 
+    /*
+       One target only: the hero's "Read the market" line, which opts in with
+       data-mercury-target. Every other heading is left completely alone — no
+       wrappers, no listeners, no styles.
+    */
     const headings = Array.from(
-      root.querySelectorAll<HTMLElement>("h1, h2, h3"),
+      root.querySelectorAll<HTMLElement>("[data-mercury-target]"),
     ).filter((h) => !h.closest("[data-mercury-skip]"));
     if (!headings.length) return;
 
@@ -267,7 +272,7 @@ export function MercuryHeadings() {
              being drawn out rather than as a letter simply sliding.
           */
           const wakeT = Math.max(0, 1 - dist / (REACH * 1.05));
-          const suction = Math.min(1, wakeT * wakeT * wakeT * rush * 2.1);
+          const suction = Math.min(1, wakeT * wakeT * wakeT * rush * 1.9);
 
           // Direction of the pull, in the glyph's own frame.
           const ux = dx / (dist || 1);
@@ -280,12 +285,12 @@ export function MercuryHeadings() {
              Scaling happens in a rotated frame so the stretch follows the pull
              instead of the page axes.
           */
-          const along = 1 + suction * 0.36;
-          const across = 1 - suction * 0.22;
+          const along = 1 + suction * 0.26;
+          const across = 1 - suction * 0.15;
           const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 
-          const tx = ux * suction * 24;
-          const ty = uy * suction * 24;
+          const tx = ux * suction * 15;
+          const ty = uy * suction * 15;
 
           glyph.el.style.setProperty("--s", suction.toFixed(3));
           glyph.el.style.transformOrigin = "50% 50%";

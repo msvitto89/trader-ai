@@ -26,6 +26,10 @@ interface KineticTextProps {
   /** Scroll parallax strength; 0 disables it. */
   parallax?: number;
   as?: "h1" | "h2" | "p";
+  /** Excluded from the mercury wake (every heading but the hero line). */
+  mercurySkip?: boolean;
+  /** Opted in to the mercury wake (the hero line, which is otherwise skipped). */
+  mercuryTarget?: boolean;
 }
 
 export function KineticText({
@@ -36,6 +40,8 @@ export function KineticText({
   reach = 190,
   parallax = 0.12,
   as: Tag = "h1",
+  mercurySkip = true,
+  mercuryTarget = false,
 }: KineticTextProps) {
   const rootRef = useRef<HTMLElement | null>(null);
 
@@ -135,7 +141,12 @@ export function KineticText({
   const words = text.split(" ");
 
   return (
-    <Tag ref={rootRef as never} className={className} data-mercury-skip>
+    <Tag
+      ref={rootRef as never}
+      className={className}
+      data-mercury-skip={mercurySkip ? "" : undefined}
+      data-mercury-target={mercuryTarget ? "" : undefined}
+    >
       {words.map((word, wIndex) => (
         <span key={`${word}-${wIndex}`} className="inline-block whitespace-nowrap">
           {Array.from(word).map((char, cIndex) => (

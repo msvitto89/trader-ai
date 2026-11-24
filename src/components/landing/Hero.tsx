@@ -89,6 +89,8 @@ export function Hero() {
 
         <KineticText
           text="Read the market"
+          mercurySkip={false}
+          mercuryTarget
           delay={0.18}
           className="max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
         />

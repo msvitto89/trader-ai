@@ -590,8 +590,8 @@ a:focus-visible {
      rim where it is being pulled out, and a soft trailing shadow behind it.
      Both scale with --s, so at rest this is completely inert.
   */
-  filter: drop-shadow(0 0 calc(var(--s) * 7px) rgba(255, 222, 166, calc(var(--s) * 0.45)))
-    drop-shadow(0 0 calc(var(--s) * 18px) rgba(0, 0, 0, calc(var(--s) * 0.5)));
+  filter: drop-shadow(0 0 calc(var(--s) * 4px) rgba(255, 222, 166, calc(var(--s) * 0.26)))
+    drop-shadow(0 0 calc(var(--s) * 11px) rgba(0, 0, 0, calc(var(--s) * 0.3)));
 }
 
 /* Nothing to pull toward a stylus, and a touch device has no pointer at all. */
