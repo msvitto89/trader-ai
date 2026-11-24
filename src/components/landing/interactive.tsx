@@ -219,3 +219,126 @@ export function TiltCard({
     </div>
   );
 }
+
+/**
+ * Magnetic button: the element leans toward the pointer while it is inside a
+ * surrounding field of influence, then springs back. Used on the hero CTAs so
+ * they feel physically attractable rather than merely hittable.
+ */
+export function Magnetic({
+  children,
+  className = "",
+  strength = 0.28,
+}: {
+  children: ReactNode;
+  className?: string;
+  strength?: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia("(hover: none)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    let frame = 0;
+    let tx = 0;
+    let ty = 0;
+
+    const apply = () => {
+      frame = 0;
+      el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+    };
+
+    const onMove = (event: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = event.clientX - cx;
+      const dy = event.clientY - cy;
+      const dist = Math.hypot(dx, dy);
+      const radius = Math.max(rect.width, rect.height) * 1.35;
+      if (dist < radius) {
+        const falloff = 1 - dist / radius;
+        tx = dx * strength * falloff;
+        ty = dy * strength * falloff;
+      } else {
+        tx = 0;
+        ty = 0;
+      }
+      if (!frame) frame = window.requestAnimationFrame(apply);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [strength]);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-transform duration-300 ease-out will-change-transform ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Curtain that lifts as the section enters view. Pure CSS transition driven by
+ * an IntersectionObserver, so it costs one class flip rather than a rAF loop.
+ */
+export function RevealVeil({
+  children,
+  className = "",
+  from = "bottom",
+}: {
+  children: ReactNode;
+  className?: string;
+  from?: "bottom" | "left" | "right";
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setShown(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.15 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const hidden =
+    from === "left"
+      ? "translate3d(-102%,0,0)"
+      : from === "right"
+        ? "translate3d(102%,0,0)"
+        : "translate3d(0,102%,0)";
+
+  return (
+    <div className={`relative overflow-hidden ${className}`}>
+      <div
+        ref={ref}
+        className="transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform"
+        style={{ transform: shown ? "translate3d(0,0,0)" : hidden }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}

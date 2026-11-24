@@ -306,3 +306,50 @@ a:focus-visible {
     display: none;
   }
 }
+
+/* Scroll cue: a light travelling down a hairline. */
+@keyframes scrollCue {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(300%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[scrollCue_1\.8s_ease-in-out_infinite\] {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Hero armillary sphere
+   ───────────────────────────────────────────────────────────── */
+@keyframes ringSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes markerOrbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="ringSpin"],
+  [style*="markerOrbit"],
+  [style*="sunRays"] {
+    animation: none !important;
+  }
+}
+
+@keyframes sunRays {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
