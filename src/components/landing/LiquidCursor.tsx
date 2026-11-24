@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
  * lag behind the real pointer.
  */
 
-const DISC = 40; // diameter: radius 20px
+const DISC = 20; // diameter: radius 10px
 
 export function LiquidCursor() {
   const discRef = useRef<HTMLDivElement | null>(null);
