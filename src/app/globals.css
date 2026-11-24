@@ -578,6 +578,8 @@ a:focus-visible {
 
 .mg {
   --b: 0;
+  /* Suction from the invisible circle's wake. 0 at rest. */
+  --s: 0;
   position: relative;
   display: inline-block;
   will-change: transform;
@@ -593,7 +595,14 @@ a:focus-visible {
   filter: drop-shadow(0 calc(var(--b) * 2.4px) calc(var(--b) * 3px) rgba(0, 0, 0, calc(var(--b) * 0.9)))
     drop-shadow(0 0 calc(var(--b) * 12px) rgba(0, 0, 0, calc(var(--b) * 0.65)))
     /* the warm edge light that sells a curved, translucent surface */
-    drop-shadow(0 0 calc(var(--b) * 8px) rgba(255, 226, 168, calc(var(--b) * 0.32)));
+    drop-shadow(0 0 calc(var(--b) * 8px) rgba(255, 226, 168, calc(var(--b) * 0.32)))
+    /*
+       The wake. Ink pulled out of a letter thins and smears: a warm rim where
+       it is being drawn, then a soft trailing shadow. Both scale with --s, so
+       they are inert anywhere the wake is not.
+    */
+    drop-shadow(0 0 calc(var(--s) * 7px) rgba(255, 222, 166, calc(var(--s) * 0.45)))
+    drop-shadow(0 0 calc(var(--s) * 18px) rgba(0, 0, 0, calc(var(--s) * 0.5)));
 }
 
 /*

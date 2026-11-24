@@ -30,6 +30,22 @@ const PULL_X = 19.5; // max horizontal reach toward the cursor
 const PULL_Y = 9.1; // vertical reach; flat, so lines do not collide
 const STRETCH = 0.39; // max elongation along the pull axis
 
+/*
+   The invisible circle.
+
+   Nothing is drawn here — the tracker has no DOM element, no border, no fill.
+   It is a point that chases the pointer with inertia, so it always lags a
+   little behind it, and the suction is emitted from the point it trails, not
+   from the pointer itself. That is the whole trick: the effect is never centred
+   on the circle, it is always stretched out behind it, so what you see is a
+   liquid wake rather than a wireframe following the mouse.
+*/
+const FOLLOW_K = 0.17; // spring stiffness: how hard the circle chases the pointer
+const FOLLOW_DAMP = 0.8; // < 1, so it overshoots slightly instead of snapping
+const WAKE_MIN = 10; // px the effect sits behind the circle even at rest
+const WAKE_MAX = 46; // px of extra trail at full speed
+const SPEED_REF = 26; // px/frame that counts as "fast"
+
 type Glyph = {
   el: HTMLElement;
   x: number;
@@ -254,6 +270,14 @@ export function MercuryHeadings() {
     let raf = 0;
     let px = -9999;
     let py = -9999;
+    // The invisible circle. Not rendered — a point with velocity.
+    let cx = -9999;
+    let cy = -9999;
+    let cvx = 0;
+    let cvy = 0;
+    // Last direction of travel, kept so a resting circle still has a "behind".
+    let dirX = 0;
+    let dirY = 0;
     let dirty = false;
     let phase = 0;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -264,6 +288,7 @@ export function MercuryHeadings() {
           glyph.el.style.transform = "";
           glyph.el.style.transformOrigin = "";
           glyph.el.style.removeProperty("--b");
+          glyph.el.style.removeProperty("--s");
         }
       }
     };
@@ -271,16 +296,62 @@ export function MercuryHeadings() {
     const apply = () => {
       raf = 0;
 
+      /*
+         Step the invisible circle toward the pointer. A spring with damping,
+         not a lerp: a plain lerp cannot overshoot, and the small overshoot is
+         what makes the circle feel like it has mass and the wake feel liquid.
+      */
+      if (px < -9000) {
+        cx = px;
+        cy = py;
+        cvx = 0;
+        cvy = 0;
+      } else {
+        if (cx < -9000) {
+          // First contact: start on the pointer rather than flying in from
+          // off-screen.
+          cx = px;
+          cy = py;
+        }
+        cvx = (cvx + (px - cx) * FOLLOW_K) * FOLLOW_DAMP;
+        cvy = (cvy + (py - cy) * FOLLOW_K) * FOLLOW_DAMP;
+        cx += cvx;
+        cy += cvy;
+      }
+
+      const speed = Math.hypot(cvx, cvy);
+      const moving = speed > 0.08 || Math.hypot(px - cx, py - cy) > 0.8;
+
+      if (speed > 0.35) {
+        dirX = cvx / speed;
+        dirY = cvy / speed;
+      }
+
+      /*
+         The effect origin sits BEHIND the circle, opposite its direction of
+         travel, by an amount that grows with speed. This is the difference
+         between "a circle with an effect on it" and "an effect trailing a
+         circle": the glyphs are dragged toward the wake, never toward the
+         tracker itself.
+      */
+      const fast = Math.min(1, speed / SPEED_REF);
+      const wake = WAKE_MIN + fast * WAKE_MAX;
+      const ex = cx - dirX * wake;
+      const ey = cy - dirY * wake;
+      // The wake also intensifies with speed, so a slow drift is a shimmer and
+      // a flick is a rip.
+      const rush = 1 + fast * 0.85;
+
       for (const unit of units) {
         const r = unit.heading.getBoundingClientRect();
 
         // Cheap reject with slack, so nothing is computed for far headings.
         const near =
           r.height > 0 &&
-          px > r.left - REACH &&
-          px < r.right + REACH &&
-          py > r.top - REACH &&
-          py < r.bottom + REACH;
+          ex > r.left - REACH &&
+          ex < r.right + REACH &&
+          ey > r.top - REACH &&
+          ey < r.bottom + REACH;
 
         const rig = filters.get(unit.heading);
 
@@ -298,8 +369,8 @@ export function MercuryHeadings() {
         let strongest = 0;
 
         for (const glyph of unit.glyphs) {
-          const dx = px - glyph.x;
-          const dy = py - glyph.y;
+          const dx = ex - glyph.x;
+          const dy = ey - glyph.y;
           const dist = Math.hypot(dx, dy);
 
           if (dist > REACH) {
@@ -307,6 +378,7 @@ export function MercuryHeadings() {
               glyph.el.style.transform = "";
               glyph.el.style.transformOrigin = "";
               glyph.el.style.removeProperty("--b");
+              glyph.el.style.removeProperty("--s");
             }
             continue;
           }
@@ -323,6 +395,16 @@ export function MercuryHeadings() {
           // closest letter rather than overwritten 37 times per frame.
           if (pull > strongest) strongest = pull;
 
+          /*
+             Suction from the wake. Wider than the pull and softer than the
+             drain that was rejected: the glyph is dragged toward the wake
+             origin, elongates along that axis and thins across it, and a
+             low-frequency ripple rides the surface so the ink reads as liquid
+             being drawn out rather than as a letter simply sliding.
+          */
+          const wakeT = Math.max(0, 1 - dist / (REACH * 1.05));
+          const suction = Math.min(1, wakeT * wakeT * wakeT * rush * 2.1);
+
           // Direction of the pull, in the glyph's own frame.
           const ux = dx / (dist || 1);
           const uy = dy / (dist || 1);
@@ -334,14 +416,17 @@ export function MercuryHeadings() {
           // inflates more evenly, so the two read as one rounded swell rather
           // than a flat smear. --b feeds the gloss/rim in CSS.
           const bulge = 1 + pull * 0.13;
-          const along = (1 + pull * STRETCH) * bulge;
-          const across = (1 - pull * 0.12) * bulge;
+          // Stretch toward the wake and thin across it. The asymmetry is what
+          // makes the ink look like it is being drawn out of the letter.
+          const along = (1 + pull * STRETCH + suction * 0.36) * bulge;
+          const across = (1 - pull * 0.12 - suction * 0.22) * bulge;
           const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 
-          const tx = ux * pull * PULL_X;
-          const ty = uy * pull * PULL_Y;
+          const tx = ux * (pull * PULL_X + suction * 24);
+          const ty = uy * (pull * PULL_Y + suction * 24);
 
           glyph.el.style.setProperty("--b", pull.toFixed(3));
+          glyph.el.style.setProperty("--s", suction.toFixed(3));
           glyph.el.style.transformOrigin = "50% 50%";
           glyph.el.style.transform =
             `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
@@ -355,10 +440,14 @@ export function MercuryHeadings() {
               unit.heading.style.filter = `url(#${rig.filter.id})`;
               rig.attached = true;
             }
-            rig.disp.setAttribute("scale", (strongest * 7.8).toFixed(2));
+            rig.disp.setAttribute(
+              "scale",
+              (strongest * 7.8 + Math.min(1, strongest * rush) * 4.2).toFixed(2),
+            );
             // Nudge the noise so the surface is alive while the pointer moves.
             if (!reducedMotion) {
-              const f = 0.008 + Math.sin(phase * 0.9) * 0.0016;
+              // The wake drags the surface into finer folds as it moves.
+              const f = 0.008 + Math.sin(phase * 0.9) * 0.0016 + fast * 0.004;
               rig.turb.setAttribute("baseFrequency", `${f.toFixed(5)} ${(f * 2.4).toFixed(5)}`);
             }
           } else if (rig.attached) {
@@ -370,6 +459,10 @@ export function MercuryHeadings() {
 
         if (any) dirty = true;
       }
+
+      // Keep ticking while the invisible circle is still catching up: the wake
+      // has to keep moving after the pointer stops, or it freezes mid-trail.
+      if (moving) dirty = true;
 
       // Keep ticking while anything is still displaced so the release can
       // finish, but stop as soon as everything has settled.
