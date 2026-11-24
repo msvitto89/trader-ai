@@ -326,9 +326,10 @@ function UserRow({
   const router = useRouter();
   if (!user) return null;
 
-  const initials = user.name
+  const initials = (user.name ?? "")
     .split(" ")
-    .map((p) => p[0])
+    .filter(Boolean)
+    .map((part) => part[0] ?? "")
     .join("")
     .slice(0, 2)
     .toUpperCase();
@@ -351,7 +352,7 @@ function UserRow({
         {initials || "T"}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11.5px] text-ink">{user.name}</div>
+        <div className="truncate text-[11.5px] text-ink">{user.name || "Trader"}</div>
         <div className="truncate text-[10px] text-ink-4">{user.email}</div>
       </div>
       <button

@@ -35,10 +35,28 @@ export default function RouteError({
           connection one. Retrying usually resolves it.
         </p>
 
-        {error.digest && (
-          <p className="mt-3 rounded-[6px] border border-hairline-2 bg-surface-2 px-2.5 py-1.5 font-mono text-[11px] text-ink-3">
-            digest {error.digest}
+        {/* Surface the actual message: without it a client-side crash is
+            indistinguishable from any other, and diagnosing it needs devtools. */}
+        <div className="mt-3 rounded-[6px] border border-hairline-2 bg-surface-2 px-2.5 py-2">
+          <p className="font-mono text-[11px] leading-relaxed text-ink-2">
+            {error.name}: {error.message || "no message"}
           </p>
+          {error.digest && (
+            <p className="mt-1 font-mono text-[10.5px] text-ink-4">
+              digest {error.digest}
+            </p>
+          )}
+        </div>
+
+        {error.stack && (
+          <details className="mt-2 rounded-[6px] border border-hairline-2 bg-surface-2 px-2.5 py-2">
+            <summary className="cursor-pointer text-[11px] font-medium text-ink-3">
+              Stack trace
+            </summary>
+            <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-ink-4">
+              {error.stack.split("\n").slice(0, 8).join("\n")}
+            </pre>
+          </details>
         )}
 
         <div className="mt-5 flex items-center gap-2">

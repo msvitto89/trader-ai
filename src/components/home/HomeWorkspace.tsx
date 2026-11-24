@@ -87,7 +87,7 @@ export function HomeWorkspace() {
 
   const hour = new Date().getUTCHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const firstName = user?.name.split(" ")[0] ?? "trader";
+  const firstName = (user?.name ?? "").trim().split(" ")[0] || "trader";
 
   return (
     <div>
