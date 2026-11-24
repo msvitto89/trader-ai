@@ -649,3 +649,40 @@ describe("Market data layer", () => {
     assert.match(a.dataDisclaimer, /DEMO DATA/);
   });
 });
+
+/**
+ * Contract test for the public demo endpoint's payload.
+ *
+ * A client component rendering `setup.rationale` as `string[]` crashed the
+ * landing page with React error #31 (objects are not valid as a child). These
+ * assertions pin the shapes the UI is allowed to rely on, so a drift between
+ * the engine and a component fails here instead of in the browser.
+ */
+describe("Demo analysis payload contract", () => {
+  it("rationale entries are structured, never bare strings", async () => {
+    const bundle = await new DemoMarketDataProvider().getBundle("BTC/USD");
+    const analysis = analyzeBundle({ symbol: "BTC/USD", bundle, style: "swing" });
+    assert.ok(analysis.setups.length > 0, "expected at least one setup");
+
+    for (const setup of analysis.setups) {
+      for (const reason of setup.rationale) {
+        assert.equal(typeof reason, "object", "reason must be an object");
+        assert.equal(typeof reason.label, "string");
+        assert.equal(typeof reason.detail, "string");
+        assert.ok(reason.label.length > 0);
+        assert.ok(reason.detail.length > 0);
+      }
+    }
+  });
+
+  it("invalidatedIf is a flat array of strings, safe to render directly", async () => {
+    const bundle = await new DemoMarketDataProvider().getBundle("XAU/USD");
+    const analysis = analyzeBundle({ symbol: "XAU/USD", bundle, style: "swing" });
+    for (const setup of analysis.setups) {
+      for (const condition of setup.invalidatedIf) {
+        assert.equal(typeof condition, "string");
+        assert.ok(condition.length > 0);
+      }
+    }
+  });
+});

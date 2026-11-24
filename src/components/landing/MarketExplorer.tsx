@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { FadeInUp } from "./reveal";
+import type { SetupReason } from "@/lib/types";
 
 /**
  * Interactive market explorer.
@@ -26,7 +27,8 @@ interface DemoSetup {
   takeProfit: number;
   riskReward: number;
   confidence: number;
-  rationale: string[];
+  /** Structured reasons, mirroring the engine's SetupReason. */
+  rationale: SetupReason[];
   invalidatedIf: string[];
 }
 
@@ -374,13 +376,16 @@ export function MarketExplorer() {
                         Why this trade
                       </p>
                       <ul className="mt-2 space-y-1.5">
-                        {data.setup.rationale.slice(0, 3).map((reason, i) => (
+                        {data.setup.rationale.slice(0, 3).map((reason) => (
                           <li
-                            key={i}
+                            key={reason.label}
                             className="flex gap-2 text-[11.5px] leading-relaxed text-gray-400"
                           >
                             <span className="mt-[6px] size-1 shrink-0 rounded-full bg-accent/60" />
-                            {reason}
+                            <span>
+                              <span className="text-gray-300">{reason.label}:</span>{" "}
+                              {reason.detail}
+                            </span>
                           </li>
                         ))}
                       </ul>
