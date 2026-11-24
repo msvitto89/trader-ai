@@ -4,8 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { BrandMarquee } from "./BrandMarquee";
-import { ArmillarySphere } from "./ArmillarySphere";
-import { SolarField } from "./SolarField";
+import { CandleField } from "./CandleField";
 import { KineticText } from "./KineticText";
 import { FadeInUp } from "./reveal";
 import { Magnetic } from "./interactive";
@@ -14,17 +13,15 @@ import { Magnetic } from "./interactive";
  * Hero composition.
  *
  * Layered like a print piece rather than a web banner:
- *   1. solar field   generative particle artwork, pointer-aware
- *   2. sun chrome    a warm arc rising behind the type (the "solar" motif)
- *   3. 3D object     wireframe icosahedron, parallaxed
- *   4. grain         film noise to stop the gradients banding
- *   5. type          kinetic letters, pointer-reactive
+ *   1. candle field  a live, generative candlestick chart that answers the
+ *                    pointer with pops, RGB-split glitches and an OHLC readout
+ *   2. grain         film noise to stop the gradients banding
+ *   3. type          kinetic letters, pointer-reactive
  *
  * Everything below the fold is untouched; this is the only section that is
  * allowed to be an artwork, and the product itself stays restrained.
  */
 export function Hero() {
-  const sunRef = useRef<HTMLDivElement | null>(null);
   const objectWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -36,15 +33,11 @@ export function Hero() {
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         const y = window.scrollY;
-        // The sun drifts up and the object recedes as the hero leaves.
-        if (sunRef.current) {
-          sunRef.current.style.transform = `translate3d(-50%, ${(y * 0.16).toFixed(1)}px, 0) scale(${(1 + y * 0.00012).toFixed(4)})`;
-        }
+        // The field recedes and dims as the hero leaves, so the next section
+        // arrives over a clearing rather than over a busy chart.
         if (objectWrapRef.current) {
-          objectWrapRef.current.style.transform = `translate3d(0, ${(y * -0.1).toFixed(1)}px, 0)`;
-          objectWrapRef.current.style.opacity = String(
-            Math.max(0, 1 - y / 900),
-          );
+          objectWrapRef.current.style.transform = `translate3d(0, ${(y * -0.12).toFixed(1)}px, 0)`;
+          objectWrapRef.current.style.opacity = String(Math.max(0, 1 - y / 820));
         }
       });
     };
@@ -61,29 +54,12 @@ export function Hero() {
       id="about"
       className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
     >
-      {/* 1 — generative solar field */}
-      <div className="pointer-events-none absolute inset-0 -z-20">
-        <SolarField density={0.00011} />
-      </div>
-
-      {/* 2 — sun chrome: a warm arc behind the headline */}
+      {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
-        ref={sunRef}
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-[42%] -z-10 size-[46rem] -translate-x-1/2 -translate-y-1/2 will-change-transform"
+        ref={objectWrapRef}
+        className="pointer-events-none absolute inset-0 -z-20 will-change-transform"
       >
-        <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_50%,rgba(217,164,65,0.16),rgba(217,164,65,0.05)_38%,transparent_66%)] blur-[60px]" />
-        {/* Ruled rings, like an ephemeris diagram */}
-        <div className="absolute inset-[14%] rounded-full border border-accent/[0.09]" />
-        <div className="absolute inset-[26%] rounded-full border border-accent/[0.07]" />
-        <div className="absolute inset-[38%] rounded-full border border-accent/[0.05]" />
-        {/* Horizon line the sun sits on */}
-        <div className="absolute inset-x-[-30%] top-1/2 h-px bg-gradient-to-r from-transparent via-accent/20 to-transparent" />
-      </div>
-
-      {/* 3 — armillary sphere, receding on scroll */}
-      <div ref={objectWrapRef} className="pointer-events-none absolute inset-0 -z-10 will-change-transform">
-        <ArmillarySphere />
+        <CandleField />
       </div>
 
       {/* 4 — film grain: kills gradient banding on wide displays */}
@@ -96,7 +72,7 @@ export function Hero() {
         }}
       />
 
-      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[radial-gradient(ellipse_60%_46%_at_50%_52%,rgba(6,6,7,0.55)_0%,rgba(6,6,7,0.24)_54%,transparent_76%)]" />
+      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(6,6,7,0.72)_0%,rgba(6,6,7,0.26)_34%,rgba(6,6,7,0.30)_58%,rgba(6,6,7,0.72)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-[4] h-72 bg-gradient-to-b from-transparent via-black/60 to-black" />
 
       {/* 5 — type */}
@@ -169,7 +145,9 @@ export function Hero() {
         </FadeInUp>
 
         <FadeInUp delay={1.2} distance={18} className="w-full">
-          <BrandMarquee />
+          <div className="hero-floor pt-10">
+            <BrandMarquee />
+          </div>
         </FadeInUp>
       </div>
 
