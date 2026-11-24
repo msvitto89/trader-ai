@@ -70,6 +70,15 @@ function wrapGlyphs(root: HTMLElement): HTMLElement[] {
             const glyph = document.createElement("span");
             glyph.className = "mg"; // glyph: the stretchable unit
             glyph.textContent = char;
+            // A copy of the letter itself, painted on top by --b. This is what
+            // makes each glyph read as a raised bubble: the lower copy carries
+            // the body and rim shadow, the upper one carries the glossy top.
+            const gloss = document.createElement("span");
+            gloss.className = "mg-gloss";
+            gloss.textContent = char;
+            gloss.setAttribute("aria-hidden", "true");
+            glyph.appendChild(gloss);
+
             word.appendChild(glyph);
             out.push(glyph);
           });
@@ -147,6 +156,7 @@ export function MercuryHeadings() {
         if (glyph.el.style.transform) {
           glyph.el.style.transform = "";
           glyph.el.style.transformOrigin = "";
+          glyph.el.style.removeProperty("--b");
         }
       }
     };
@@ -181,6 +191,7 @@ export function MercuryHeadings() {
             if (glyph.el.style.transform) {
               glyph.el.style.transform = "";
               glyph.el.style.transformOrigin = "";
+              glyph.el.style.removeProperty("--b");
             }
             continue;
           }
@@ -199,13 +210,18 @@ export function MercuryHeadings() {
           // Stretch along the pull axis, slacken across it. Scaling in the
           // rotated frame is what makes it read as mercury rather than as a
           // letter sliding sideways.
-          const along = 1 + pull * STRETCH;
-          const across = 1 - pull * 0.12;
+          // Bubble: a rounder bulge. Where the gravity pull elongates, a bubble
+          // inflates more evenly, so the two read as one rounded swell rather
+          // than a flat smear. --b feeds the gloss/rim in CSS.
+          const bulge = 1 + pull * 0.1;
+          const along = (1 + pull * STRETCH) * bulge;
+          const across = (1 - pull * 0.12) * bulge;
           const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 
           const tx = ux * pull * PULL_X;
           const ty = uy * pull * PULL_Y;
 
+          glyph.el.style.setProperty("--b", pull.toFixed(3));
           glyph.el.style.transformOrigin = "50% 50%";
           glyph.el.style.transform =
             `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
