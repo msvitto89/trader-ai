@@ -32,6 +32,9 @@ const REACH = 190; // px at which the well starts to pull
  * exactly 40px from the text.
  */
 const GLASS_BAND = 40;
+
+/** How many beads of glass hang off a heading. */
+const DROPS = 9;
 const PULL_X = 19.5; // max horizontal reach toward the cursor
 const PULL_Y = 9.1; // vertical reach; flat, so lines do not collide
 const STRETCH = 0.39; // max elongation along the pull axis
@@ -47,10 +50,12 @@ type Glyph = {
 
 type Unit = {
   heading: HTMLElement;
-  /** display:contents wrapper that scopes the glass slab to this heading. */
+  /** display:contents wrapper that scopes the droplets to this heading. */
   wrap: HTMLElement;
-  /** The glass surface itself, painted behind the glyphs. */
-  slab: HTMLElement;
+  /** Layer the glass droplets live in, pinned to the heading's box. */
+  field: HTMLElement;
+  /** One bead per drop; each swells on its own proximity to the pointer. */
+  beads: HTMLElement[];
   glyphs: Glyph[];
   /** Measured box width/height, used to prove the heading does not shift. */
   baseWidth: number;
@@ -124,33 +129,45 @@ export function MercuryHeadings() {
 
     headings.forEach((heading) => {
       /*
-         The heading must build a liquid-glass SURFACE of its own, not just
-         refract itself. CSS cannot put a backdrop-filter on an element and have
-         it sample that same element's text, so the slab is a separate element
-         placed behind the heading — wrapped around it, since the heading's
-         parent is a normal-flow block and an absolutely positioned sibling
-         would escape to the nearest positioned ancestor.
+         The heading exudes drops of liquid glass. It must not become a panel:
+         a CSS backdrop-filter can only sample what is behind its element, never
+         the text inside it, so the glass lives in a separate layer behind the
+         heading — wrapped around it, because the heading's parent is a normal
+         block and an absolutely positioned sibling would escape to the nearest
+         positioned ancestor.
 
          The wrapper is display: contents, so it generates no box and the
-         heading's layout is untouched. The slab is absolute inside it.
+         heading's own layout is untouched.
       */
       const wrap = document.createElement("span");
       wrap.className = "mglass";
       heading.parentNode?.insertBefore(wrap, heading);
       wrap.appendChild(heading);
 
-      const slab = document.createElement("span");
-      slab.className = "mglass__slab";
-      slab.setAttribute("aria-hidden", "true");
-      // Lightning CSS drops the unprefixed backdrop-filter when it sees a
-      // -webkit- twin, and only Chromium's prefixed one then exists. Set both
-      // directly so every engine gets whichever it honours.
-      slab.style.backdropFilter = "blur(9px) saturate(1.9) brightness(1.12)";
-      slab.style.setProperty("-webkit-backdrop-filter", "blur(9px) saturate(1.9) brightness(1.12)");
-      slab.innerHTML =
-        '<span class="mglass__ring"></span>' +
-        '<span class="mglass__specular"></span>';
-      wrap.insertBefore(slab, heading);
+      const field = document.createElement("span");
+      field.className = "mglass__drops";
+      field.setAttribute("aria-hidden", "true");
+
+      // Beads hang off the underside of the heading, each at its own fixed
+      // point along the edge, each with its own size and wobble so the row
+      // never reads as a repeating pattern.
+      const beads: HTMLElement[] = [];
+      for (let i = 0; i < DROPS; i += 1) {
+        const bead = document.createElement("span");
+        bead.className = "mglass__drop";
+        const t = (i + 0.5) / DROPS;
+        bead.style.setProperty("--t", t.toFixed(4));
+        bead.style.setProperty("--i", String(i));
+        bead.style.setProperty("--jitter", (((i * 37) % 11) / 11 - 0.5).toFixed(3));
+        // Lightning CSS drops the unprefixed twin when it sees -webkit-, and
+        // only Chromium's prefixed one then exists. Set both directly.
+        bead.style.backdropFilter = "blur(4px) saturate(2.6) brightness(1.5)";
+        bead.style.setProperty("-webkit-backdrop-filter", "blur(4px) saturate(2.6) brightness(1.5)");
+        bead.innerHTML = '<span class="mglass__drop-core"></span>';
+        field.appendChild(bead);
+        beads.push(bead);
+      }
+      wrap.insertBefore(field, heading);
 
       const glyphs = wrapGlyphs(heading);
       if (!glyphs.length) return;
@@ -159,7 +176,8 @@ export function MercuryHeadings() {
       units.push({
         heading,
         wrap,
-        slab,
+        field,
+        beads,
         baseWidth: rect.width,
         glyphs: glyphs.map((el) => ({ el, x: 0, y: 0, ox: 0, oy: 0 })),
       });
@@ -414,23 +432,34 @@ export function MercuryHeadings() {
               ),
             )
           : 0;
-        // Exact geometry, every frame. `position: fixed` does NOT mean
-        // viewport coordinates here: an ancestor with a transform, filter or
-        // will-change becomes the containing block, and several sections have
-        // one. So the slab's own viewport origin is measured and subtracted —
-        // this holds regardless of which ancestor ends up anchoring it.
-        const pad = 10 + bandT * 8;
-        const slabOrigin = unit.slab.getBoundingClientRect();
-        const originX = slabOrigin.left - (parseFloat(unit.slab.style.left) || 0);
-        const originY = slabOrigin.top - (parseFloat(unit.slab.style.top) || 0);
-        unit.slab.style.left = `${(r.left - pad - originX).toFixed(1)}px`;
-        unit.slab.style.top = `${(r.top - pad - originY).toFixed(1)}px`;
-        unit.slab.style.width = `${(r.width + pad * 2).toFixed(1)}px`;
-        unit.slab.style.height = `${(r.height + pad * 2).toFixed(1)}px`;
-        unit.slab.style.setProperty("--g", bandT.toFixed(3));
-        unit.slab.style.setProperty("--gx", `${Math.round(((px - r.left) / (r.width || 1)) * 100)}%`);
-        unit.slab.style.setProperty("--gy", `${Math.round(((py - r.top) / (r.height || 1)) * 100)}%`);
-        unit.slab.dataset.on = bandT > 0.01 ? "1" : "0";
+        // Geometry for the drop layer. `position: fixed` does NOT mean
+        // viewport coordinates here: an ancestor with a transform becomes the
+        // containing block, so the layer's own viewport origin is measured and
+        // subtracted. This holds whichever ancestor ends up anchoring it.
+        const padX = 30;
+        const padTop = 4;
+        const padBottom = 26;
+        const fieldOrigin = unit.field.getBoundingClientRect();
+        const originX = fieldOrigin.left - (parseFloat(unit.field.style.left) || 0);
+        const originY = fieldOrigin.top - (parseFloat(unit.field.style.top) || 0);
+        unit.field.style.left = `${(r.left - padX - originX).toFixed(1)}px`;
+        unit.field.style.top = `${(r.top - padTop - originY).toFixed(1)}px`;
+        unit.field.style.width = `${(r.width + padX * 2).toFixed(1)}px`;
+        unit.field.style.height = `${(r.height + padTop + padBottom).toFixed(1)}px`;
+        unit.field.style.setProperty("--edge", `${padBottom}px`);
+        unit.field.style.setProperty("--g", bandT.toFixed(3));
+        unit.field.dataset.on = bandT > 0.01 ? "1" : "0";
+
+        // Each bead swells according to its own distance from the pointer, so
+        // the drops nearest the cursor are the ones that grow — the row respires
+        // toward the pointer instead of all inflating at once.
+        const edgeY = r.bottom;
+        unit.beads.forEach((bead, i) => {
+          const bx = r.left + ((i + 0.5) / unit.beads.length) * r.width;
+          const d = Math.hypot(px - bx, py - edgeY);
+          const near = Math.max(0, 1 - d / (GLASS_BAND * 3.4));
+          bead.style.setProperty("--d", (near * near).toFixed(4));
+        });
 
         if (rig) {
           if (any && strongest > 0.02) {
