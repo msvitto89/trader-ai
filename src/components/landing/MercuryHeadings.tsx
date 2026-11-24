@@ -26,6 +26,12 @@ import { useEffect, useRef } from "react";
  */
 
 const REACH = 190; // px at which the well starts to pull
+/**
+ * How far outside the heading's own box still counts as "near". The glass
+ * surfaces within this band and nowhere else, so the border of the effect is
+ * exactly 40px from the text.
+ */
+const GLASS_BAND = 40;
 const PULL_X = 19.5; // max horizontal reach toward the cursor
 const PULL_Y = 9.1; // vertical reach; flat, so lines do not collide
 const STRETCH = 0.39; // max elongation along the pull axis
@@ -41,6 +47,10 @@ type Glyph = {
 
 type Unit = {
   heading: HTMLElement;
+  /** display:contents wrapper that scopes the glass slab to this heading. */
+  wrap: HTMLElement;
+  /** The glass surface itself, painted behind the glyphs. */
+  slab: HTMLElement;
   glyphs: Glyph[];
   /** Measured box width/height, used to prove the heading does not shift. */
   baseWidth: number;
@@ -113,12 +123,43 @@ export function MercuryHeadings() {
     const units: Unit[] = [];
 
     headings.forEach((heading) => {
+      /*
+         The heading must build a liquid-glass SURFACE of its own, not just
+         refract itself. CSS cannot put a backdrop-filter on an element and have
+         it sample that same element's text, so the slab is a separate element
+         placed behind the heading — wrapped around it, since the heading's
+         parent is a normal-flow block and an absolutely positioned sibling
+         would escape to the nearest positioned ancestor.
+
+         The wrapper is display: contents, so it generates no box and the
+         heading's layout is untouched. The slab is absolute inside it.
+      */
+      const wrap = document.createElement("span");
+      wrap.className = "mglass";
+      heading.parentNode?.insertBefore(wrap, heading);
+      wrap.appendChild(heading);
+
+      const slab = document.createElement("span");
+      slab.className = "mglass__slab";
+      slab.setAttribute("aria-hidden", "true");
+      // Lightning CSS drops the unprefixed backdrop-filter when it sees a
+      // -webkit- twin, and only Chromium's prefixed one then exists. Set both
+      // directly so every engine gets whichever it honours.
+      slab.style.backdropFilter = "blur(9px) saturate(1.9) brightness(1.12)";
+      slab.style.setProperty("-webkit-backdrop-filter", "blur(9px) saturate(1.9) brightness(1.12)");
+      slab.innerHTML =
+        '<span class="mglass__ring"></span>' +
+        '<span class="mglass__specular"></span>';
+      wrap.insertBefore(slab, heading);
+
       const glyphs = wrapGlyphs(heading);
       if (!glyphs.length) return;
 
       const rect = heading.getBoundingClientRect();
       units.push({
         heading,
+        wrap,
+        slab,
         baseWidth: rect.width,
         glyphs: glyphs.map((el) => ({ el, x: 0, y: 0, ox: 0, oy: 0 })),
       });
@@ -282,6 +323,14 @@ export function MercuryHeadings() {
           py > r.top - REACH &&
           py < r.bottom + REACH;
 
+        // The glass appears only inside the 40px band around the heading.
+        const inBand =
+          r.height > 0 &&
+          px > r.left - GLASS_BAND &&
+          px < r.right + GLASS_BAND &&
+          py > r.top - GLASS_BAND &&
+          py < r.bottom + GLASS_BAND;
+
         const rig = filters.get(unit.heading);
 
         if (!near) {
@@ -349,6 +398,40 @@ export function MercuryHeadings() {
             `rotate(${(-angle).toFixed(1)}deg)`;
         }
 
+        // Surface the glass. A soft ramp over the last few pixels of the band
+        // keeps the edge from popping on.
+        const bandT = inBand
+          ? Math.min(
+              1,
+              Math.max(
+                0,
+                Math.min(
+                  px - (r.left - GLASS_BAND),
+                  r.right + GLASS_BAND - px,
+                  py - (r.top - GLASS_BAND),
+                  r.bottom + GLASS_BAND - py,
+                ) / 12,
+              ),
+            )
+          : 0;
+        // Exact geometry, every frame. `position: fixed` does NOT mean
+        // viewport coordinates here: an ancestor with a transform, filter or
+        // will-change becomes the containing block, and several sections have
+        // one. So the slab's own viewport origin is measured and subtracted —
+        // this holds regardless of which ancestor ends up anchoring it.
+        const pad = 10 + bandT * 8;
+        const slabOrigin = unit.slab.getBoundingClientRect();
+        const originX = slabOrigin.left - (parseFloat(unit.slab.style.left) || 0);
+        const originY = slabOrigin.top - (parseFloat(unit.slab.style.top) || 0);
+        unit.slab.style.left = `${(r.left - pad - originX).toFixed(1)}px`;
+        unit.slab.style.top = `${(r.top - pad - originY).toFixed(1)}px`;
+        unit.slab.style.width = `${(r.width + pad * 2).toFixed(1)}px`;
+        unit.slab.style.height = `${(r.height + pad * 2).toFixed(1)}px`;
+        unit.slab.style.setProperty("--g", bandT.toFixed(3));
+        unit.slab.style.setProperty("--gx", `${Math.round(((px - r.left) / (r.width || 1)) * 100)}%`);
+        unit.slab.style.setProperty("--gy", `${Math.round(((py - r.top) / (r.height || 1)) * 100)}%`);
+        unit.slab.dataset.on = bandT > 0.01 ? "1" : "0";
+
         if (rig) {
           if (any && strongest > 0.02) {
             if (!rig.attached) {
@@ -413,6 +496,11 @@ export function MercuryHeadings() {
       filters.forEach((rig, heading) => {
         heading.style.filter = "";
         rig.filter.remove();
+      });
+      // Unwrap: put the heading back where it was so nothing is left behind.
+      units.forEach((unit) => {
+        unit.wrap.parentNode?.insertBefore(unit.heading, unit.wrap);
+        unit.wrap.remove();
       });
     };
   }, []);
