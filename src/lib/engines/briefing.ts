@@ -8,6 +8,7 @@
  */
 
 import { getMarketDataProvider } from "../market-data";
+import { fmtPrice } from "../format";
 import { analyzeBundle } from "../ai/analyze";
 import { INSTRUMENTS } from "../instruments";
 import type {
@@ -129,7 +130,9 @@ export async function buildBriefing(style: TradingStyle = "day"): Promise<DailyB
     ...best.slice(0, 2).map((a) => {
       const s = a.setups[0];
       // "invalid below" is only correct for longs; shorts are invalidated above.
-      return `${a.symbol}: ${s.direction.toUpperCase()} zone ${s.entryLow}–${s.entryHigh} — invalidated ${s.direction === "long" ? "below" : "above"} ${s.stop}`;
+      // Format to the instrument's precision: raw floats leaked into the
+      // briefing text ("55266.534311111114") and looked like a bug to the user.
+      return `${a.symbol}: ${s.direction.toUpperCase()} zone ${fmtPrice(s.entryLow, a.symbol)}–${fmtPrice(s.entryHigh, a.symbol)} — invalidated ${s.direction === "long" ? "below" : "above"} ${fmtPrice(s.stop, a.symbol)}`;
     }),
     ...analyses
       .filter((a) => a.overview.regime === "compression")
@@ -137,7 +140,11 @@ export async function buildBriefing(style: TradingStyle = "day"): Promise<DailyB
       .map((a) => `${a.symbol}: volatility compression — the first decisive close outside the coil is the event, not the chop inside it.`),
     ...analyses
       .slice(0, 1)
-      .map((a) => `${a.symbol}: key level at ${a.overview.supports[0]?.price ?? "—"} support / ${a.overview.resistances[0]?.price ?? "—"} resistance.`),
+      .map((a) => {
+        const support = a.overview.supports[0]?.price;
+        const resistance = a.overview.resistances[0]?.price;
+        return `${a.symbol}: key level at ${support == null ? "—" : fmtPrice(support, a.symbol)} support / ${resistance == null ? "—" : fmtPrice(resistance, a.symbol)} resistance.`;
+      }),
   ].slice(0, 4);
 
   return {

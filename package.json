@@ -2,7 +2,7 @@
   "name": "tradia-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "TRADIA AI — AI trading intelligence, risk and journaling workspace",
+  "description": "TRADIA AI \u2014 AI trading intelligence, risk and journaling workspace",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p ${PORT:-3000}",
     "build": "next build",
@@ -32,6 +32,7 @@
     "@types/react-dom": "^19.2.2",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "playwright-core": "^1.65.1",
     "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.74.0"

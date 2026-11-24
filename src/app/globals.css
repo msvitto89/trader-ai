@@ -249,7 +249,9 @@ input[type="number"] {
 /* Anchor targets must clear the fixed 64px nav. */
 section[id],
 footer[id] {
-  scroll-margin-top: 80px;
+  /* Clears the 64px fixed nav plus breathing room, so an anchor jump never
+     parks the section heading underneath the bar. */
+  scroll-margin-top: 96px;
 }
 
 @media (prefers-reduced-motion: reduce) {
