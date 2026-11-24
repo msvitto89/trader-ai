@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   TRADIA AI — design tokens
+   Premium fintech: near-black charcoal canvas, warm off-white
+   type, restrained amber accent (no neon, no casino).
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --color-canvas: #0a0b0d;
+  --color-surface: #101216;
+  --color-surface-2: #15181d;
+  --color-surface-3: #1b1f26;
+  --color-hairline: #23272f;
+  --color-hairline-2: #2c313a;
+
+  --color-ink: #f2f3f5;
+  --color-ink-2: #a7adb8;
+  --color-ink-3: #6d7480;
+  --color-ink-4: #474d57;
+
+  --color-accent: #d9a441;
+  --color-accent-soft: #d9a44122;
+  --color-accent-ink: #14100a;
+
+  --color-bull: #3fae86;
+  --color-bull-soft: #3fae8618;
+  --color-bear: #d2595c;
+  --color-bear-soft: #d2595c18;
+  --color-neutral: #8d94a1;
+  --color-info: #6f9fd8;
+
+  --font-sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Inter,
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+* {
+  border-color: var(--color-hairline);
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-feature-settings: "tnum" 0;
+}
+
+::selection {
+  background: #d9a44133;
+  color: #fff;
+}
+
+/* Scrollbars: quiet, not decorative */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2c313a transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2c313a;
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Numeric alignment for all financial figures */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Micro-label used across panels */
+.eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  font-weight: 550;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+
+.panel-flat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+}
+
+.hairline-x {
+  border-top: 1px solid var(--color-hairline);
+}
+
+/* Focus ring — visible, not loud */
+:focus-visible {
+  outline: 1.5px solid #d9a44199;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Faint grid texture for hero / empty surfaces */
+.grid-texture {
+  background-image: linear-gradient(#ffffff05 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff05 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+@keyframes tradia-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: tradia-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes tradia-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: tradia-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes tradia-shimmer {
+  0% {
+    background-position: -320px 0;
+  }
+  100% {
+    background-position: 320px 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #15181d 0%,
+    #1e222a 50%,
+    #15181d 100%
+  );
+  background-size: 640px 100%;
+  animation: tradia-shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .live-dot,
+  .shimmer {
+    animation: none !important;
+  }
+}
+
+/* Dense data table rhythm */
+.data-table th {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  font-weight: 550;
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--color-hairline);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #1a1e24;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.data-table tbody tr {
+  transition: background 0.12s ease;
+}
+.data-table tbody tr:hover {
+  background: #ffffff04;
+}
