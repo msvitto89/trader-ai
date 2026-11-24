@@ -150,7 +150,7 @@ export function OnboardingWizard({
         {/* ── 1. Welcome ─────────────────────────────────────── */}
         {step === "welcome" && (
           <div className="rise">
-            <div className="mb-3 inline-flex items-center gap-1.5 rounded-[4px] border border-[#d9a44133] bg-accent-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-[4px] border border-[#d7efff33] bg-accent-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
               <Sparkles className="size-3" strokeWidth={2} />
               Your AI trading workspace
             </div>
@@ -347,7 +347,7 @@ export function OnboardingWizard({
               <SummaryRow label="Watchlist" value={watched.map((w) => w.symbol).join(" · ") || "—"} />
             </div>
 
-            <div className="mt-4 rounded-[8px] border border-[#d9a44133] bg-accent-soft p-3">
+            <div className="mt-4 rounded-[8px] border border-[#d7efff33] bg-accent-soft p-3">
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-accent">
                 <Check className="size-3.5" strokeWidth={2.5} />
                 Ready to go

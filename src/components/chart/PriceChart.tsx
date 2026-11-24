@@ -172,10 +172,10 @@ export function PriceChart({
               y={Math.min(setupBand.entryTop, setupBand.entryBottom)}
               width={plotW}
               height={Math.max(2, Math.abs(setupBand.entryBottom - setupBand.entryTop))}
-              fill="#d9a441"
+              fill="#d7efff"
               opacity="0.13"
             />
-            <line x1={padL} x2={width - padR} y1={setupBand.entryTop} y2={setupBand.entryTop} stroke="#d9a441" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+            <line x1={padL} x2={width - padR} y1={setupBand.entryTop} y2={setupBand.entryTop} stroke="#d7efff" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
             <line x1={padL} x2={width - padR} y1={setupBand.stop} y2={setupBand.stop} stroke="#d2595c" strokeWidth="1" strokeDasharray="4 3" opacity="0.8" />
             <line x1={padL} x2={width - padR} y1={setupBand.target} y2={setupBand.target} stroke="#3fae86" strokeWidth="1" strokeDasharray="4 3" opacity="0.8" />
             <text x={padL + 4} y={setupBand.stop - 4} fill="#d2595c" fontSize="9" fontFamily="ui-monospace, monospace">
@@ -208,7 +208,7 @@ export function PriceChart({
 
         {/* EMAs */}
         {ema20Path && <path d={ema20Path} fill="none" stroke="#6f9fd8" strokeWidth="1.2" opacity="0.75" />}
-        {ema50Path && <path d={ema50Path} fill="none" stroke="#d9a441" strokeWidth="1.2" opacity="0.55" />}
+        {ema50Path && <path d={ema50Path} fill="none" stroke="#d7efff" strokeWidth="1.2" opacity="0.55" />}
 
         {/* candles */}
         {slice.map((c, i) => {
@@ -246,7 +246,7 @@ export function PriceChart({
         <g>
           <line x1={padL} x2={width - padR} y1={y(last.c)} y2={y(last.c)} stroke="#f2f3f5" strokeWidth="0.75" opacity="0.35" strokeDasharray="2 2" />
           <rect x={width - padR + 2} y={y(last.c) - 7} width={padR - 6} height={14} rx="2" fill="#f2f3f5" />
-          <text x={width - padR + 6} y={y(last.c) + 3.4} fill="#0a0b0d" fontSize="9.5" fontFamily="ui-monospace, monospace" fontWeight="600">
+          <text x={width - padR + 6} y={y(last.c) + 3.4} fill="#0a0a0a" fontSize="9.5" fontFamily="ui-monospace, monospace" fontWeight="600">
             {fmtPrice(last.c, symbol)}
           </text>
         </g>

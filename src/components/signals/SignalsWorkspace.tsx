@@ -251,7 +251,7 @@ export function SignalsWorkspace() {
               </div>
             )}
             {rules.length >= maxAlerts && (
-              <div className="mt-2.5 flex items-center gap-2 rounded-[6px] border border-[#d9a44126] bg-accent-soft px-2.5 py-2">
+              <div className="mt-2.5 flex items-center gap-2 rounded-[6px] border border-[#d7efff26] bg-accent-soft px-2.5 py-2">
                 <Lock className="size-3.5 shrink-0 text-accent" strokeWidth={2} />
                 <p className="text-[10.5px] text-ink-2">
                   Alert limit reached ({maxAlerts}).{" "}

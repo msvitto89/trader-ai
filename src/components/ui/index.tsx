@@ -172,7 +172,7 @@ const TONES: Record<Tone, string> = {
   neutral: "bg-surface-3 text-ink-2 border-hairline-2",
   bull: "bg-bull-soft text-bull border-[#3fae8633]",
   bear: "bg-bear-soft text-bear border-[#d2595c33]",
-  accent: "bg-accent-soft text-accent border-[#d9a44133]",
+  accent: "bg-accent-soft text-accent border-[#d7efff33]",
   info: "bg-[#6f9fd818] text-info border-[#6f9fd833]",
   muted: "bg-transparent text-ink-3 border-hairline",
 };
@@ -215,7 +215,7 @@ export function DemoBadge({ source }: { source: "demo" | "live" }) {
     return (
       <span
         title="Prices are simulated for product evaluation. Not live market data."
-        className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#d9a44140] bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-accent"
+        className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#d7efff40] bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-accent"
       >
         <span className="size-1.5 rounded-full bg-accent" />
         Demo data
@@ -640,7 +640,7 @@ export function Alert({
 }) {
   const styles = {
     info: "border-[#6f9fd833] bg-[#6f9fd80f] text-[#a8c6e6]",
-    warn: "border-[#d9a44133] bg-accent-soft text-[#e6c894]",
+    warn: "border-[#d7efff33] bg-accent-soft text-[#e6c894]",
     danger: "border-[#d2595c33] bg-bear-soft text-[#e9a3a4]",
     success: "border-[#3fae8633] bg-bull-soft text-[#9fd8c2]",
   }[tone];

@@ -453,7 +453,7 @@ export function TrustStrip() {
 
         <FadeInUp delay={0.1} stagger={0.08} className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] sm:grid-cols-2 lg:grid-cols-4">
           {TRUST.map((item) => (
-            <SpotlightCard key={item.title} className="bg-[#0a0b0d] p-6">
+            <SpotlightCard key={item.title} className="bg-[#0a0a0a] p-6">
               <p className="text-[13px] font-semibold text-white">
                 {item.title}
               </p>
@@ -544,7 +544,7 @@ export function Pricing() {
             <SpotlightCard
               className={`h-full rounded-2xl border p-7 ${
                 plan.highlight
-                  ? "border-accent/25 bg-[linear-gradient(180deg,rgba(217,164,65,0.06),rgba(255,255,255,0.01))]"
+                  ? "border-accent/25 bg-[linear-gradient(180deg,rgba(215,239,255,0.06),rgba(255,255,255,0.01))]"
                   : "border-white/10 bg-white/[0.015]"
               }`}
             >

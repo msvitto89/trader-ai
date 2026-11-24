@@ -249,7 +249,7 @@ export function HomeWorkspace() {
               <Panel title="Volatility & risks" subtitle={data.briefing.volatilityNote}>
                 <div className="space-y-1.5">
                   {data.briefing.risks.map((r, i) => (
-                    <div key={i} className="flex gap-2 rounded-[6px] border border-[#d9a44126] bg-accent-soft px-2.5 py-2">
+                    <div key={i} className="flex gap-2 rounded-[6px] border border-[#d7efff26] bg-accent-soft px-2.5 py-2">
                       <Shield className="mt-0.5 size-3 shrink-0 text-accent" strokeWidth={2} />
                       <span className="text-[10.5px] leading-relaxed text-[#e6c894]">{r}</span>
                     </div>

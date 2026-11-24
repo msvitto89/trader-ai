@@ -108,7 +108,7 @@ export function ChatWorkspace() {
       {/* header */}
       <div className="flex items-center justify-between gap-3 border-b border-hairline pb-2.5">
         <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-[6px] border border-[#d9a44133] bg-accent-soft">
+          <span className="flex size-7 items-center justify-center rounded-[6px] border border-[#d7efff33] bg-accent-soft">
             <Brain className="size-3.5 text-accent" strokeWidth={1.9} />
           </span>
           <div>
@@ -136,7 +136,7 @@ export function ChatWorkspace() {
           </div>
         ) : messages.length === 0 ? (
           <div className="mx-auto max-w-lg py-6">
-            <div className="mb-4 flex size-9 items-center justify-center rounded-[8px] border border-[#d9a44133] bg-accent-soft">
+            <div className="mb-4 flex size-9 items-center justify-center rounded-[8px] border border-[#d7efff33] bg-accent-soft">
               <Sparkles className="size-4 text-accent" strokeWidth={1.9} />
             </div>
             <h2 className="text-[16px] font-semibold tracking-[-0.015em]">
@@ -255,7 +255,7 @@ export function ChatWorkspace() {
 function Avatar({ role }: { role: "user" | "assistant" }) {
   if (role === "assistant") {
     return (
-      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-[5px] border border-[#d9a44133] bg-accent-soft">
+      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-[5px] border border-[#d7efff33] bg-accent-soft">
         <Brain className="size-3 text-accent" strokeWidth={2} />
       </span>
     );
@@ -387,7 +387,7 @@ function BlockView({ block }: { block: ChatBlock }) {
       <div
         className={cn(
           "mt-2 rounded-[6px] border px-2.5 py-2 text-[10.5px] leading-relaxed",
-          block.tone === "warn" ? "border-[#d9a44133] bg-accent-soft text-[#e6c894]" : "border-[#6f9fd833] bg-[#6f9fd80f] text-[#a8c6e6]",
+          block.tone === "warn" ? "border-[#d7efff33] bg-accent-soft text-[#e6c894]" : "border-[#6f9fd833] bg-[#6f9fd80f] text-[#a8c6e6]",
         )}
       >
         {block.text}

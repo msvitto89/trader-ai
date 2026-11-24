@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { BrandMarquee } from "./BrandMarquee";
 import { CandleField } from "./CandleField";
+import { FluidShader } from "./FluidShader";
 import { KineticText } from "./KineticText";
 import { FadeInUp } from "./reveal";
 import { Magnetic } from "./interactive";
@@ -54,6 +55,9 @@ export function Hero() {
       id="about"
       className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
     >
+      {/* 0 — fluid distortion field: the surface the candles sit on */}
+      <FluidShader className="pointer-events-none absolute inset-0 -z-30 h-full w-full" />
+
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
         ref={objectWrapRef}
@@ -72,7 +76,7 @@ export function Hero() {
         }}
       />
 
-      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(6,6,7,0.72)_0%,rgba(6,6,7,0.26)_34%,rgba(6,6,7,0.30)_58%,rgba(6,6,7,0.72)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(10,10,10,0.86)_0%,rgba(10,10,10,0.42)_30%,rgba(10,10,10,0.5)_58%,rgba(10,10,10,0.9)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-[4] h-72 bg-gradient-to-b from-transparent via-black/60 to-black" />
 
       {/* 5 — type */}
@@ -113,7 +117,7 @@ export function Hero() {
             <Magnetic strength={0.22}>
               <Link
                 href="/register"
-                className="group inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[13.5px] font-semibold text-black shadow-[0_0_40px_-8px_rgba(217,164,65,0.45)] transition-shadow duration-300 hover:shadow-[0_0_60px_-6px_rgba(217,164,65,0.65)]"
+                className="group inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[13.5px] font-semibold text-black shadow-[0_0_40px_-8px_rgba(215,239,255,0.45)] transition-shadow duration-300 hover:shadow-[0_0_60px_-6px_rgba(215,239,255,0.65)]"
               >
                 Create free account
                 <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />

@@ -387,7 +387,7 @@ export function RiskWorkspace() {
                 <Panel title="Warnings">
                   <div className="space-y-1.5">
                     {result.warnings.map((w) => (
-                      <div key={w} className="flex gap-2 rounded-[6px] border border-[#d9a44133] bg-accent-soft px-2.5 py-2">
+                      <div key={w} className="flex gap-2 rounded-[6px] border border-[#d7efff33] bg-accent-soft px-2.5 py-2">
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-accent" strokeWidth={2} />
                         <span className="text-[11px] leading-relaxed text-[#e6c894]">{w}</span>
                       </div>

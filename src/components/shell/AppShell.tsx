@@ -109,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="border-t border-hairline p-2.5">
             {plan === "free" ? (
-              <div className="rounded-[8px] border border-[#d9a44126] bg-accent-soft p-2.5">
+              <div className="rounded-[8px] border border-[#d7efff26] bg-accent-soft p-2.5">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-accent">
                   <Sparkles className="size-3" strokeWidth={2} />
                   Free plan

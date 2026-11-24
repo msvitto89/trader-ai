@@ -2,11 +2,12 @@
 
 /* ─────────────────────────────────────────────────────────────
    TRADIA AI — design tokens
-   Premium fintech: near-black charcoal canvas, warm off-white
-   type, restrained amber accent (no neon, no casino).
+   Premium fintech: blacktop canvas, fusion type, a single cool accent.
+   Palette is exactly two families — fusion #D7EFFF and blacktop #0A0A0A —
+   plus the semantic bull/bear signals that data always needs.
    ───────────────────────────────────────────────────────────── */
 @theme {
-  --color-canvas: #0a0b0d;
+  --color-canvas: #0a0a0a;
   --color-surface: #101216;
   --color-surface-2: #15181d;
   --color-surface-3: #1b1f26;
@@ -18,9 +19,9 @@
   --color-ink-3: #6d7480;
   --color-ink-4: #474d57;
 
-  --color-accent: #d9a441;
-  --color-accent-soft: #d9a44122;
-  --color-accent-ink: #14100a;
+  --color-accent: #d7efff;
+  --color-accent-soft: #d7efff22;
+  --color-accent-ink: #0a0a0a;
 
   --color-bull: #3fae86;
   --color-bull-soft: #3fae8618;
@@ -59,7 +60,7 @@ body {
 }
 
 ::selection {
-  background: #d9a44133;
+  background: #d7efff33;
   color: #fff;
 }
 
@@ -115,7 +116,7 @@ body {
 
 /* Focus ring — visible, not loud */
 :focus-visible {
-  outline: 1.5px solid #d9a44199;
+  outline: 1.5px solid #d7efff99;
   outline-offset: 2px;
   border-radius: 3px;
 }
@@ -282,7 +283,7 @@ footer[id] {
   transition: opacity 320ms ease;
   background: radial-gradient(
     260px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(217, 164, 65, 0.1),
+    rgba(215, 239, 255, 0.1),
     transparent 65%
   );
   pointer-events: none;
@@ -388,7 +389,7 @@ a:focus-visible {
   background: linear-gradient(
     100deg,
     transparent 38%,
-    rgba(255, 226, 168, 0.5) 50%,
+    rgba(215, 239, 255, 0.5) 50%,
     transparent 62%
   );
   background-size: 260% 100%;
@@ -419,15 +420,15 @@ a:focus-visible {
 }
 
 .candle-wick {
-  background: rgba(217, 164, 65, 0.55);
-  box-shadow: 0 0 calc(var(--k) * 14px) rgba(217, 164, 65, calc(var(--k) * 0.8));
+  background: rgba(215, 239, 255, 0.55);
+  box-shadow: 0 0 calc(var(--k) * 14px) rgba(215, 239, 255, calc(var(--k) * 0.8));
 }
 
 .candle-body {
-  background: #d9a441;
+  background: #d7efff;
   box-shadow:
-    0 0 calc(var(--k) * 26px) calc(var(--k) * 2px) rgba(217, 164, 65, calc(var(--k) * 0.55)),
-    0 0 0 calc(var(--k) * 0.5px) rgba(255, 226, 168, calc(var(--k) * 0.6));
+    0 0 calc(var(--k) * 26px) calc(var(--k) * 2px) rgba(215, 239, 255, calc(var(--k) * 0.55)),
+    0 0 0 calc(var(--k) * 0.5px) rgba(215, 239, 255, calc(var(--k) * 0.6));
 }
 
 /* Down candles read cooler and flatter, so direction is legible at a glance. */

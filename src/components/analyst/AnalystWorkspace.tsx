@@ -213,7 +213,7 @@ export function AnalystWorkspace() {
               className={cn(
                 "flex items-center gap-1 rounded-[7px] border px-2 py-2 text-[11px]",
                 isWatched(symbol)
-                  ? "border-[#d9a44140] bg-accent-soft text-accent"
+                  ? "border-[#d7efff40] bg-accent-soft text-accent"
                   : "border-hairline-2 bg-surface-2 text-ink-3 hover:text-ink-2",
               )}
               aria-pressed={isWatched(symbol)}
@@ -341,7 +341,7 @@ export function AnalystWorkspace() {
 
           <Panel title="Ready when you are">
             <div className="py-4">
-              <div className="mb-3 flex size-9 items-center justify-center rounded-[8px] border border-[#d9a44133] bg-accent-soft">
+              <div className="mb-3 flex size-9 items-center justify-center rounded-[8px] border border-[#d7efff33] bg-accent-soft">
                 <Sparkles className="size-4 text-accent" strokeWidth={1.9} />
               </div>
               <h3 className="text-[13px] font-medium text-ink">Run the AI analysis</h3>

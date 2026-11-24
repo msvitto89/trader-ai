@@ -266,7 +266,7 @@ export function CandleField() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {/* Warm wash — light without a sun */}
-      <div className="absolute left-1/2 top-[58%] size-[52rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(217,164,65,0.10),rgba(217,164,65,0.03)_46%,transparent_72%)] blur-[24px]" />
+      <div className="absolute left-1/2 top-[58%] size-[52rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(215,239,255,0.10),rgba(215,239,255,0.03)_46%,transparent_72%)] blur-[24px]" />
 
       {/* Chart grid */}
       <div
