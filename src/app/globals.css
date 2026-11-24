@@ -49,6 +49,7 @@ body {
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -220,4 +221,42 @@ input[type="number"] {
 }
 .data-table tbody tr:hover {
   background: #ffffff04;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Landing page motion
+   Marquee is pure CSS so it never fights the smooth-scroll loop.
+   ───────────────────────────────────────────────────────────── */
+@keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    /* Track renders the brand set 4×; shifting by half is one seamless period. */
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.marquee-track {
+  animation: marquee 38s linear infinite;
+  will-change: transform;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Anchor targets must clear the fixed 64px nav. */
+section[id],
+footer[id] {
+  scroll-margin-top: 80px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
 }
