@@ -134,7 +134,7 @@ export function KineticText({
   const words = text.split(" ");
 
   return (
-    <Tag ref={rootRef as never} className={className} data-distort-skip>
+    <Tag ref={rootRef as never} className={className}>
       {words.map((word, wIndex) => (
         <span key={`${word}-${wIndex}`} className="inline-block whitespace-nowrap">
           {Array.from(word).map((char, cIndex) => (

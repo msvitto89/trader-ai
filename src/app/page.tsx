@@ -14,7 +14,7 @@ import {
 import { MarketExplorer } from "@/components/landing/MarketExplorer";
 import { ScrollProgress } from "@/components/landing/interactive";
 import { LiquidCursor } from "@/components/landing/LiquidCursor";
-import { HeadingDistortion } from "@/components/landing/HeadingDistortion";
+import { LiquidHeadings } from "@/components/landing/LiquidHeadings";
 import { Faq } from "@/components/landing/Faq";
 import { Footer } from "@/components/landing/Footer";
 
@@ -41,7 +41,7 @@ export default async function LandingPage({
       <SmoothScroll />
       <ScrollProgress />
       <LiquidCursor />
-      <HeadingDistortion />
+      <LiquidHeadings />
       <Nav />
       <main>
         <Hero />

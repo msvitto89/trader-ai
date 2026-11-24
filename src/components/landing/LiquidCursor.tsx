@@ -3,43 +3,33 @@
 import { useEffect, useRef } from "react";
 
 /**
- * LiquidCursor — a liquid-glass disc that replaces the pointer.
+ * LiquidCursor — a small ring that replaces the pointer on the landing page.
  *
- * Earlier version sampled a cloned snapshot of the hero for "refraction". That
- * was abandoned: a frozen clone cannot track scroll, so the lens showed ghost
- * text that drifted out of alignment with the page behind it. A lens that lies
- * about what is underneath it looks like a bug, not like glass.
+ * Deliberately plain: no blur, no refraction, no specular. A 40px disc with a
+ * grey wash and a 1px white border at 40%. Anything heavier competes with the
+ * page and reads as decoration rather than as a pointer.
  *
- * The disc is now built from what the compositor can actually sample — the live
- * page through backdrop-filter:
- *   blur + saturate   frosts and lifts what is underneath
- *   warm tint         two radial gradients, warm from one side
- *   rim               conic-gradient ring, masked to a 1px border
- *   specular          a soft highlight where light would catch the bevel
- *   follow            slow damped tracking, so the glass has weight
- *
- * Grow over headings and controls, shrink on press, and fall back to the native
- * cursor on touch and under reduced motion.
+ * Behaviour is limited to what a cursor owes you: it follows, it lifts slightly
+ * over a link so interactive targets are legible, and it shrinks on press. The
+ * follow is damped by a small factor — enough to feel weighted, not enough to
+ * lag behind the real pointer.
  */
 
-const DISC = 118;
+const DISC = 40; // diameter: radius 20px
 
 export function LiquidCursor() {
   const discRef = useRef<HTMLDivElement | null>(null);
-  const dotRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const disc = discRef.current;
     if (!disc) return;
 
-    // Only replace the pointer when there is a real fine pointer. Testing
-    // `hover: none` alone is too blunt: hybrids and some VMs report it while
-    // still having a mouse, and the cursor disappeared for them entirely.
+    // Only replace the pointer when there is a real fine pointer.
     const finePointer = window.matchMedia("(any-pointer: fine)");
     if (!finePointer.matches) return;
 
-    // Reduced motion still gets the glass — it is a pointer, not an effect —
-    // but it tracks the pointer 1:1 with no easing and no scaling.
+    // Reduced motion still gets the cursor — it is a pointer, not an effect —
+    // but it tracks 1:1 with no easing and no scaling.
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let raf = 0;
@@ -58,21 +48,18 @@ export function LiquidCursor() {
         cy = ty;
         scale = 1;
       } else {
-        cx += (tx - cx) * 0.2;
-        cy += (ty - cy) * 0.2;
-        scale += (targetScale - scale) * 0.14;
+        // A gentle follow: the disc trails the pointer by a few pixels.
+        cx += (tx - cx) * 0.24;
+        cy += (ty - cy) * 0.24;
+        scale += (targetScale - scale) * 0.16;
       }
 
       disc.style.transform = `translate3d(${(cx - DISC / 2).toFixed(1)}px, ${(cy - DISC / 2).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
 
-      if (dotRef.current) {
-        dotRef.current.style.transform = `translate3d(${tx - 2}px, ${ty - 2}px, 0)`;
-      }
-
       const settled = still
         ? true
-        : Math.abs(tx - cx) < 0.3 &&
-          Math.abs(ty - cy) < 0.3 &&
+        : Math.abs(tx - cx) < 0.25 &&
+          Math.abs(ty - cy) < 0.25 &&
           Math.abs(targetScale - scale) < 0.003;
       if (!settled) raf = window.requestAnimationFrame(tick);
     };
@@ -86,10 +73,9 @@ export function LiquidCursor() {
       ty = event.clientY;
 
       const target = event.target as HTMLElement | null;
-      const onHeading = !!target?.closest("h1, h2, h3");
       const onControl = !!target?.closest("a, button, input, select, textarea");
-      targetScale = still ? 1 : onHeading ? 1.4 : onControl ? 1.14 : 1;
-      disc.dataset.heading = onHeading ? "1" : "0";
+      // A small lift on interactive targets, nothing more.
+      targetScale = still ? 1 : onControl ? 1.35 : 1;
 
       if (!visible) {
         visible = true;
@@ -101,14 +87,12 @@ export function LiquidCursor() {
     };
 
     const onDown = () => {
-      targetScale = 0.88;
-      disc.dataset.press = "1";
+      targetScale = still ? 1 : 0.8;
       start();
     };
 
     const onUp = () => {
       targetScale = 1;
-      disc.dataset.press = "0";
       start();
     };
 
@@ -120,8 +104,8 @@ export function LiquidCursor() {
     const onPointerCapabilityChange = () => {
       if (!finePointer.matches) onLeave();
     };
-    finePointer.addEventListener?.("change", onPointerCapabilityChange);
 
+    finePointer.addEventListener?.("change", onPointerCapabilityChange);
     document.documentElement.classList.add("has-liquid-cursor");
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
@@ -147,16 +131,7 @@ export function LiquidCursor() {
         ref={discRef}
         className="liquid-cursor"
         style={{ width: DISC, height: DISC, opacity: 0 }}
-        data-heading="0"
-        data-press="0"
-      >
-        <div className="liquid-cursor__glass" />
-        <div className="liquid-cursor__rim" />
-        <div className="liquid-cursor__specular" />
-      </div>
-
-      {/* A true pointer dot, so the pointer never feels lost inside the glass */}
-      <div ref={dotRef} className="liquid-cursor__dot" />
+      />
     </div>
   );
 }
