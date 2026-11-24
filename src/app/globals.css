@@ -559,3 +559,202 @@ a:focus-visible {
     rgba(6, 6, 7, 0.9) 100%
   );
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Liquid glass cursor
+   ─────────────────────────────────────────────────────────────
+   A lens, not a ripple: the content inside the disc is a cached snapshot of
+   the hero, scaled and offset against the pointer so it appears to swell under
+   the glass. Layers: clip → refracted content → blur/warmth → rim → specular.
+*/
+
+html.has-liquid-cursor,
+html.has-liquid-cursor * {
+  cursor: none !important;
+}
+
+.liquid-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border-radius: 9999px;
+  will-change: transform, opacity;
+  transition: opacity 220ms ease-out;
+  /* Offsets are baked into the transform, so no translate here. */
+}
+
+/* The material: frost, warm tint, and a highlight that follows the rim. */
+.liquid-cursor__glass {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(3px) saturate(1.5) brightness(1.06);
+  -webkit-backdrop-filter: blur(3px) saturate(1.5) brightness(1.06);
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.2), transparent 46%),
+    radial-gradient(circle at 72% 84%, rgba(217, 164, 65, 0.2), transparent 54%),
+    rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.45),
+    inset 0 -10px 22px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 10px 34px -8px rgba(0, 0, 0, 0.75);
+}
+
+.liquid-cursor__rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 200deg,
+    rgba(255, 255, 255, 0.7),
+    rgba(217, 164, 65, 0.55),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.65)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.85;
+  transition: opacity 220ms ease-out;
+}
+
+.liquid-cursor__specular {
+  position: absolute;
+  top: 14%;
+  left: 22%;
+  width: 30%;
+  height: 20%;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.6),
+    rgba(255, 255, 255, 0) 70%
+  );
+  filter: blur(2px);
+}
+
+/* Over a heading the glass narrows and brightens, like a magnifier focusing. */
+.liquid-cursor[data-heading="1"] .liquid-cursor__rim {
+  opacity: 1;
+}
+.liquid-cursor[data-heading="1"] .liquid-cursor__glass {
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1px rgba(217, 164, 65, 0.5),
+    0 12px 40px -8px rgba(0, 0, 0, 0.8),
+    0 0 30px rgba(217, 164, 65, 0.28);
+}
+
+.liquid-cursor__dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+  mix-blend-mode: difference;
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* Touch and reduced-motion: hide the whole apparatus, restore the cursor. */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .liquid-cursor,
+  .liquid-cursor__dot {
+    display: none !important;
+  }
+  html.has-liquid-cursor,
+  html.has-liquid-cursor * {
+    cursor: auto !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Heading distortion
+   ─────────────────────────────────────────────────────────────
+   Three stacked copies of the heading. Only the warp and split layers move;
+   the fill stays put so the line never reflows.
+*/
+
+.hdistort-host {
+  display: block;
+}
+
+.hdistort {
+  position: relative;
+  display: block;
+  /* Isolate the fringe blending from the section behind it. */
+  isolation: isolate;
+}
+
+.hdistort__layer {
+  display: block;
+  margin: 0;
+}
+
+/* The moving copies sit exactly on top of the fill. */
+.hdistort__warp,
+.hdistort__split {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hdistort__warp {
+  /* Slightly brighter so the distortion reads as light passing through. */
+  color: #fff;
+}
+
+/* Warp layer glyphs: transform only, driven by the pointer loop. */
+.hdistort__warp .hg,
+.hdistort__split .hg {
+  display: inline-block;
+  will-change: transform, opacity;
+  transform-origin: 50% 60%;
+  backface-visibility: hidden;
+}
+
+.hdistort__split {
+  mix-blend-mode: screen;
+}
+
+/* Every fringe glyph starts invisible. The pointer loop raises individual
+   glyphs as they come into range — without this default, every glyph outside
+   the cursor's reach renders at full strength and the heading looks doubled. */
+.hdistort__split .hg {
+  opacity: 0;
+  transition: opacity 90ms linear;
+}
+
+.hdistort__split--r {
+  color: #ff4d3d;
+}
+
+.hdistort__split--c {
+  color: #35d6ee;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hdistort__warp,
+  .hdistort__split {
+    display: none;
+  }
+}
+
+/* The fill layer reserves layout only. Warp carries the visible text, so the
+   heading is never drawn twice (doubling reads as blurry bold). */
+.hdistort__fill {
+  visibility: hidden;
+}
+
+/* A word is one unbreakable unit, so glyph spans never split it. */
+.hdistort .hw {
+  display: inline-block;
+  white-space: nowrap;
+}
