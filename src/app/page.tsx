@@ -19,13 +19,20 @@ import { Footer } from "@/components/landing/Footer";
 /**
  * Marketing landing page.
  *
- * The marketing route is the one place that prioritises motion over data
- * density, so it uses Lenis + GSAP/ScrollTrigger reveals and the ReactBits-style
- * marquee. Everything behind /app keeps the restrained shell.
+ * Signed-in visitors are normally bounced to the workspace, since a returning
+ * user wants their dashboard rather than the pitch. `?preview=1` bypasses that
+ * so the marketing page can be inspected while logged in — otherwise it is
+ * unreachable for exactly the person reviewing it.
  */
-export default async function LandingPage() {
-  const user = await getCurrentUser();
-  if (user) redirect(user.onboardedAt ? "/app" : "/onboarding");
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preview?: string }>;
+}) {
+  const [user, params] = await Promise.all([getCurrentUser(), searchParams]);
+  const preview = params.preview === "1";
+
+  if (user && !preview) redirect(user.onboardedAt ? "/app" : "/onboarding");
 
   return (
     <div className="relative min-h-screen bg-black text-white">

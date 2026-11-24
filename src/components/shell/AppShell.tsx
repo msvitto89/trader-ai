@@ -241,6 +241,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 Trading involves substantial risk of loss.
               </p>
               <div className="flex shrink-0 items-center gap-3">
+                <Link href="/?preview=1" className="hover:text-ink-3">
+                  Marketing site
+                </Link>
                 <Link href="/legal/terms" className="hover:text-ink-3">
                   Terms
                 </Link>
