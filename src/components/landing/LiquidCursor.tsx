@@ -32,10 +32,15 @@ export function LiquidCursor() {
     const disc = discRef.current;
     if (!disc) return;
 
-    // The CSS media queries hide the apparatus, and bailing here keeps the
-    // listeners off the main thread entirely.
-    if (window.matchMedia("(hover: none)").matches) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Only replace the pointer when there is a real fine pointer. Testing
+    // `hover: none` alone is too blunt: hybrids and some VMs report it while
+    // still having a mouse, and the cursor disappeared for them entirely.
+    const finePointer = window.matchMedia("(any-pointer: fine)");
+    if (!finePointer.matches) return;
+
+    // Reduced motion still gets the glass — it is a pointer, not an effect —
+    // but it tracks the pointer 1:1 with no easing and no scaling.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let raf = 0;
     let cx = -999;
@@ -48,9 +53,15 @@ export function LiquidCursor() {
 
     const tick = () => {
       raf = 0;
-      cx += (tx - cx) * 0.2;
-      cy += (ty - cy) * 0.2;
-      scale += (targetScale - scale) * 0.14;
+      if (still) {
+        cx = tx;
+        cy = ty;
+        scale = 1;
+      } else {
+        cx += (tx - cx) * 0.2;
+        cy += (ty - cy) * 0.2;
+        scale += (targetScale - scale) * 0.14;
+      }
 
       disc.style.transform = `translate3d(${(cx - DISC / 2).toFixed(1)}px, ${(cy - DISC / 2).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
 
@@ -58,10 +69,11 @@ export function LiquidCursor() {
         dotRef.current.style.transform = `translate3d(${tx - 2}px, ${ty - 2}px, 0)`;
       }
 
-      const settled =
-        Math.abs(tx - cx) < 0.3 &&
-        Math.abs(ty - cy) < 0.3 &&
-        Math.abs(targetScale - scale) < 0.003;
+      const settled = still
+        ? true
+        : Math.abs(tx - cx) < 0.3 &&
+          Math.abs(ty - cy) < 0.3 &&
+          Math.abs(targetScale - scale) < 0.003;
       if (!settled) raf = window.requestAnimationFrame(tick);
     };
 
@@ -76,7 +88,7 @@ export function LiquidCursor() {
       const target = event.target as HTMLElement | null;
       const onHeading = !!target?.closest("h1, h2, h3");
       const onControl = !!target?.closest("a, button, input, select, textarea");
-      targetScale = onHeading ? 1.4 : onControl ? 1.14 : 1;
+      targetScale = still ? 1 : onHeading ? 1.4 : onControl ? 1.14 : 1;
       disc.dataset.heading = onHeading ? "1" : "0";
 
       if (!visible) {
@@ -105,6 +117,11 @@ export function LiquidCursor() {
       disc.style.opacity = "0";
     };
 
+    const onPointerCapabilityChange = () => {
+      if (!finePointer.matches) onLeave();
+    };
+    finePointer.addEventListener?.("change", onPointerCapabilityChange);
+
     document.documentElement.classList.add("has-liquid-cursor");
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
@@ -113,6 +130,7 @@ export function LiquidCursor() {
     window.addEventListener("blur", onLeave);
 
     return () => {
+      finePointer.removeEventListener?.("change", onPointerCapabilityChange);
       document.documentElement.classList.remove("has-liquid-cursor");
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);

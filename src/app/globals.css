@@ -663,8 +663,10 @@ html.has-liquid-cursor * {
   pointer-events: none;
 }
 
-/* Touch and reduced-motion: hide the whole apparatus, restore the cursor. */
-@media (hover: none), (prefers-reduced-motion: reduce) {
+/* Touch-only devices have no pointer to replace, so the native cursor stays.
+   Keyed on `any-pointer: fine` rather than `hover: none`: hybrids report both,
+   and gating on hover hid the cursor for users who did have a mouse. */
+@media (any-pointer: coarse) and (not (any-pointer: fine)) {
   .liquid-cursor,
   .liquid-cursor__dot {
     display: none !important;
@@ -672,6 +674,14 @@ html.has-liquid-cursor * {
   html.has-liquid-cursor,
   html.has-liquid-cursor * {
     cursor: auto !important;
+  }
+}
+
+/* Reduced motion keeps the glass (it is a pointer, not an effect) but removes
+   all easing: the disc tracks 1:1 and never scales. */
+@media (prefers-reduced-motion: reduce) {
+  .liquid-cursor {
+    transition: none;
   }
 }
 
@@ -740,17 +750,25 @@ html.has-liquid-cursor * {
   color: #35d6ee;
 }
 
+/* The fill layer reserves layout only. Warp carries the visible text, so the
+   heading is never drawn twice (doubling reads as blurry bold).
+   NOTE: this must stay above the reduced-motion override below — at equal
+   specificity the later rule wins, and a later `hidden` silently blanks every
+   heading for anyone with reduced motion enabled. */
+.hdistort__fill {
+  visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* No distortion, but the heading itself must still be readable: the warp
+     layer carries the visible text, so hiding it means the fill has to return. */
   .hdistort__warp,
   .hdistort__split {
     display: none;
   }
-}
-
-/* The fill layer reserves layout only. Warp carries the visible text, so the
-   heading is never drawn twice (doubling reads as blurry bold). */
-.hdistort__fill {
-  visibility: hidden;
+  .hdistort__fill {
+    visibility: visible;
+  }
 }
 
 /* A word is one unbreakable unit, so glyph spans never split it. */
