@@ -30,6 +30,18 @@ const PULL_X = 19.5; // max horizontal reach toward the cursor
 const PULL_Y = 9.1; // vertical reach; flat, so lines do not collide
 const STRETCH = 0.39; // max elongation along the pull axis
 
+/*
+   Suction. The pull above is a gentle well that holds across the whole heading;
+   this is the drain at its centre. Directly under the pointer a glyph is drawn
+   in hard, pinched across its axis, and twisted — the three motions together
+   read as liquid being sucked in rather than as a letter being nudged.
+*/
+const SUCTION_REACH = 96; // px at which the drain starts
+const SUCTION_PULL = 13; // extra travel toward the pointer, px
+const SUCTION_PINCH = 0.2; // extra elongation along the axis
+const SUCTION_SQUEEZE = 0.14; // how much the glyph thins across the axis
+const SUCTION_SWIRL = 7; // degrees of vortex twist at full suction
+
 type Glyph = {
   el: HTMLElement;
   x: number;
@@ -143,7 +155,7 @@ export function MercuryHeadings() {
       filter: SVGFilterElement;
       turb: SVGFETurbulenceElement;
       disp: SVGFEDisplacementMapElement;
-      specular: SVGFEDistantLightElement;
+      specular: SVGFESpecularLightingElement;
       attached: boolean;
     }>();
 
@@ -225,7 +237,7 @@ export function MercuryHeadings() {
       svgRef.current?.appendChild(filter);
 
       filters.set(unit.heading, {
-        filter, turb, disp, specular: light, attached: false,
+        filter, turb, disp, specular: spec, attached: false,
       });
     });
 
@@ -264,6 +276,7 @@ export function MercuryHeadings() {
           glyph.el.style.transform = "";
           glyph.el.style.transformOrigin = "";
           glyph.el.style.removeProperty("--b");
+          glyph.el.style.removeProperty("--s");
         }
       }
     };
@@ -296,6 +309,7 @@ export function MercuryHeadings() {
 
         let any = false;
         let strongest = 0;
+        let maxSuction = 0;
 
         for (const glyph of unit.glyphs) {
           const dx = px - glyph.x;
@@ -307,6 +321,7 @@ export function MercuryHeadings() {
               glyph.el.style.transform = "";
               glyph.el.style.transformOrigin = "";
               glyph.el.style.removeProperty("--b");
+              glyph.el.style.removeProperty("--s");
             }
             continue;
           }
@@ -317,6 +332,14 @@ export function MercuryHeadings() {
           // well is tight rather than a broad smudge.
           const t = 1 - dist / REACH;
           const pull = t * t;
+
+          // Suction is a much tighter falloff: only the letters directly under
+          // or beside the pointer are drained. Cubed, so the drain has a hard
+          // edge and the rest of the word is untouched.
+          const st = Math.max(0, 1 - dist / SUCTION_REACH);
+          const suction = st * st * st;
+
+          if (suction > maxSuction) maxSuction = suction;
 
           // Track the strongest pull on this heading: the glass is a property
           // of the heading, not of each glyph, so it is driven once from the
@@ -334,16 +357,25 @@ export function MercuryHeadings() {
           // inflates more evenly, so the two read as one rounded swell rather
           // than a flat smear. --b feeds the gloss/rim in CSS.
           const bulge = 1 + pull * 0.13;
-          const along = (1 + pull * STRETCH) * bulge;
-          const across = (1 - pull * 0.12) * bulge;
+          // Suction elongates along the axis and pinches across it — that
+          // difference between the two axes is what makes it read as being
+          // drawn into the pointer instead of merely growing.
+          const along = (1 + pull * STRETCH + suction * SUCTION_PINCH) * bulge;
+          const across = (1 - pull * 0.12 - suction * SUCTION_SQUEEZE) * bulge;
           const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 
-          const tx = ux * pull * PULL_X;
-          const ty = uy * pull * PULL_Y;
+          const tx = ux * (pull * PULL_X + suction * SUCTION_PULL);
+          const ty = uy * (pull * PULL_Y + suction * SUCTION_PULL * 0.55);
+
+          // Vortex. Alternating sign per glyph keeps neighbouring letters from
+          // twisting in lockstep, which would look like a mechanical spin.
+          const spin = SUCTION_SWIRL * suction * (glyph.el.textContent.charCodeAt(0) % 2 ? 1 : -1);
 
           glyph.el.style.setProperty("--b", pull.toFixed(3));
+          glyph.el.style.setProperty("--s", suction.toFixed(3));
           glyph.el.style.transformOrigin = "50% 50%";
           glyph.el.style.transform =
+            `rotate(${spin.toFixed(1)}deg) ` +
             `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
             `rotate(${angle.toFixed(1)}deg) scale(${along.toFixed(3)}, ${across.toFixed(3)}) ` +
             `rotate(${(-angle).toFixed(1)}deg)`;
@@ -355,10 +387,27 @@ export function MercuryHeadings() {
               unit.heading.style.filter = `url(#${rig.filter.id})`;
               rig.attached = true;
             }
-            rig.disp.setAttribute("scale", (strongest * 7.8).toFixed(2));
+            // The drain warps harder than the resting glass pass: it is a
+            // funnel, so the surface has to fold rather than shimmer.
+            rig.disp.setAttribute(
+              "scale",
+              (strongest * 7.8 + maxSuction * 3.5).toFixed(2),
+            );
+            // Glisten: a drain drags the surface tighter, so the highlight
+            // sharpens with it.
+            rig.specular.setAttribute(
+              "specularExponent",
+              (18 + maxSuction * 12).toFixed(1),
+            );
+            rig.specular.setAttribute(
+              "specularConstant",
+              (0.55 + maxSuction * 0.25).toFixed(2),
+            );
             // Nudge the noise so the surface is alive while the pointer moves.
             if (!reducedMotion) {
-              const f = 0.008 + Math.sin(phase * 0.9) * 0.0016;
+              // Tighten toward the pointer: a drain pulls the surface into
+              // finer, faster folds than the resting shimmer.
+              const f = 0.008 + Math.sin(phase * 0.9) * 0.0016 + maxSuction * 0.004;
               rig.turb.setAttribute("baseFrequency", `${f.toFixed(5)} ${(f * 2.4).toFixed(5)}`);
             }
           } else if (rig.attached) {
