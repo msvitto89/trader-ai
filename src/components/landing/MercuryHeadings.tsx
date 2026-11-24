@@ -26,9 +26,9 @@ import { useEffect, useRef } from "react";
  */
 
 const REACH = 190; // px at which the well starts to pull
-const PULL_X = 15; // max horizontal reach toward the cursor
-const PULL_Y = 7; // vertical reach; flat, so lines do not collide
-const STRETCH = 0.30; // max elongation along the pull axis
+const PULL_X = 19.5; // max horizontal reach toward the cursor
+const PULL_Y = 9.1; // vertical reach; flat, so lines do not collide
+const STRETCH = 0.39; // max elongation along the pull axis
 
 type Glyph = {
   el: HTMLElement;
@@ -333,7 +333,7 @@ export function MercuryHeadings() {
           // Bubble: a rounder bulge. Where the gravity pull elongates, a bubble
           // inflates more evenly, so the two read as one rounded swell rather
           // than a flat smear. --b feeds the gloss/rim in CSS.
-          const bulge = 1 + pull * 0.1;
+          const bulge = 1 + pull * 0.13;
           const along = (1 + pull * STRETCH) * bulge;
           const across = (1 - pull * 0.12) * bulge;
           const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
@@ -355,7 +355,7 @@ export function MercuryHeadings() {
               unit.heading.style.filter = `url(#${rig.filter.id})`;
               rig.attached = true;
             }
-            rig.disp.setAttribute("scale", (strongest * 6).toFixed(2));
+            rig.disp.setAttribute("scale", (strongest * 7.8).toFixed(2));
             // Nudge the noise so the surface is alive while the pointer moves.
             if (!reducedMotion) {
               const f = 0.008 + Math.sin(phase * 0.9) * 0.0016;
