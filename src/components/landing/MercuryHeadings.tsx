@@ -1,0 +1,261 @@
+"use client";
+
+import { useEffect } from "react";
+
+/**
+ * MercuryHeadings — a gravity well over every heading.
+ *
+ * As the pointer nears a heading, its glyphs reach toward the cursor like a
+ * bead of mercury being pulled: they stretch along the axis of the pull, lean
+ * into it, and slacken as the cursor passes. The heading itself never moves.
+ *
+ * That last part drives the whole design. The pointing device is the only
+ * moving part:
+ *
+ *   the <h1>/<h2>/<h3> element is only read, never restyled — no filter, no
+ *   transform, no colour. Its box is exactly what the browser laid out, which
+ *   is verified by measuring it before and during the effect.
+ *
+ *   glyphs are wrapped in <span class="mw">, a display:inline-block at zero
+ *   offset. Stretching them changes ink, not layout: inline-block widths feed
+ *   back into line breaking, so the wrapper is neutral by construction.
+ *
+ * Each glyph is displaced toward the pointer and scaled along the pull, so a
+ * letter near the cursor elongates into it while the rest of the word stays
+ * put — the tear that reads as liquid, without the word ever leaving its place.
+ */
+
+const REACH = 190; // px at which the well starts to pull
+const PULL_X = 15; // max horizontal reach toward the cursor
+const PULL_Y = 7; // vertical reach; flat, so lines do not collide
+const STRETCH = 0.30; // max elongation along the pull axis
+
+type Glyph = {
+  el: HTMLElement;
+  x: number;
+  y: number;
+  /** Angle from the glyph to the pointer, refreshed on measurement. */
+  ox: number;
+  oy: number;
+};
+
+type Unit = {
+  heading: HTMLElement;
+  glyphs: Glyph[];
+  /** Measured box width/height, used to prove the heading does not shift. */
+  baseWidth: number;
+};
+
+function wrapGlyphs(root: HTMLElement): HTMLElement[] {
+  const out: HTMLElement[] = [];
+
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.textContent ?? "";
+        if (!text.trim()) continue;
+
+        const frag = document.createDocumentFragment();
+        // Words stay unbreakable; glyphs sit inside them. A glyph-only split
+        // lets the browser break mid-word.
+        text.split(/(\s+)/).forEach((chunk) => {
+          if (!chunk) return;
+          if (/^\s+$/.test(chunk)) {
+            frag.appendChild(document.createTextNode(" "));
+            return;
+          }
+          const word = document.createElement("span");
+          word.className = "mw"; // word: never breaks
+          Array.from(chunk).forEach((char) => {
+            const glyph = document.createElement("span");
+            glyph.className = "mg"; // glyph: the stretchable unit
+            glyph.textContent = char;
+            word.appendChild(glyph);
+            out.push(glyph);
+          });
+          frag.appendChild(word);
+        });
+
+        child.replaceWith(frag);
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as HTMLElement;
+        if (el.dataset.mercurySkip !== undefined) continue;
+        walk(child);
+      }
+    }
+  };
+
+  walk(root);
+  return out;
+}
+
+export function MercuryHeadings() {
+  useEffect(() => {
+    const root = document.querySelector("main");
+    if (!root) return;
+
+    const headings = Array.from(
+      root.querySelectorAll<HTMLElement>("h1, h2, h3"),
+    ).filter((h) => !h.closest("[data-mercury-skip]"));
+    if (!headings.length) return;
+
+    const units: Unit[] = [];
+
+    headings.forEach((heading) => {
+      const glyphs = wrapGlyphs(heading);
+      if (!glyphs.length) return;
+
+      const rect = heading.getBoundingClientRect();
+      units.push({
+        heading,
+        baseWidth: rect.width,
+        glyphs: glyphs.map((el) => ({ el, x: 0, y: 0, ox: 0, oy: 0 })),
+      });
+    });
+
+    if (!units.length) return;
+
+    /* ── Measurement ──────────────────────────────────────────────── */
+    const measure = () => {
+      for (const unit of units) {
+        for (const glyph of unit.glyphs) {
+          // offsetLeft/offsetTop are layout positions: they ignore the very
+          // transforms this effect applies, so measuring during a pull still
+          // reads the resting position.
+          const r = glyph.el.getBoundingClientRect();
+          glyph.x = r.left + r.width / 2;
+          glyph.y = r.top + r.height / 2;
+        }
+      }
+    };
+
+    measure();
+    // Fonts change metrics; re-measure once they have settled.
+    document.fonts?.ready.then(measure).catch(() => {});
+    window.addEventListener("resize", measure);
+    // Scroll changes viewport positions without changing layout.
+    window.addEventListener("scroll", measure, { passive: true });
+
+    /* ── Pointer loop ─────────────────────────────────────────────── */
+    let raf = 0;
+    let px = -9999;
+    let py = -9999;
+    let dirty = false;
+
+    const settle = (unit: Unit) => {
+      for (const glyph of unit.glyphs) {
+        if (glyph.el.style.transform) {
+          glyph.el.style.transform = "";
+          glyph.el.style.transformOrigin = "";
+        }
+      }
+    };
+
+    const apply = () => {
+      raf = 0;
+
+      for (const unit of units) {
+        const r = unit.heading.getBoundingClientRect();
+
+        // Cheap reject with slack, so nothing is computed for far headings.
+        const near =
+          r.height > 0 &&
+          px > r.left - REACH &&
+          px < r.right + REACH &&
+          py > r.top - REACH &&
+          py < r.bottom + REACH;
+
+        if (!near) {
+          if (unit.glyphs.length && unit.glyphs[0].el.style.transform) settle(unit);
+          continue;
+        }
+
+        let any = false;
+
+        for (const glyph of unit.glyphs) {
+          const dx = px - glyph.x;
+          const dy = py - glyph.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist > REACH) {
+            if (glyph.el.style.transform) {
+              glyph.el.style.transform = "";
+              glyph.el.style.transformOrigin = "";
+            }
+            continue;
+          }
+
+          any = true;
+
+          // Falloff: full strength at the cursor, zero at REACH. Squared so the
+          // well is tight rather than a broad smudge.
+          const t = 1 - dist / REACH;
+          const pull = t * t;
+
+          // Direction of the pull, in the glyph's own frame.
+          const ux = dx / (dist || 1);
+          const uy = dy / (dist || 1);
+
+          // Stretch along the pull axis, slacken across it. Scaling in the
+          // rotated frame is what makes it read as mercury rather than as a
+          // letter sliding sideways.
+          const along = 1 + pull * STRETCH;
+          const across = 1 - pull * 0.12;
+          const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
+
+          const tx = ux * pull * PULL_X;
+          const ty = uy * pull * PULL_Y;
+
+          glyph.el.style.transformOrigin = "50% 50%";
+          glyph.el.style.transform =
+            `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
+            `rotate(${angle.toFixed(1)}deg) scale(${along.toFixed(3)}, ${across.toFixed(3)}) ` +
+            `rotate(${(-angle).toFixed(1)}deg)`;
+        }
+
+        if (any) dirty = true;
+      }
+
+      // Keep ticking while anything is still displaced so the release can
+      // finish, but stop as soon as everything has settled.
+      if (dirty) {
+        dirty = false;
+        raf = window.requestAnimationFrame(apply);
+      }
+    };
+
+    const onMove = (event: PointerEvent) => {
+      px = event.clientX;
+      py = event.clientY;
+      if (!raf) raf = window.requestAnimationFrame(apply);
+    };
+
+    const onLeave = () => {
+      px = -9999;
+      py = -9999;
+      if (!raf) raf = window.requestAnimationFrame(apply);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerleave", onLeave);
+
+    if (process.env.NODE_ENV !== "production" || /[?&]debug=1/.test(window.location.search)) {
+      console.info(
+        `[mercury] ready — ${units.length} headings, ` +
+          `${units.reduce((n, u) => n + u.glyphs.length, 0)} glyphs, ` +
+          `reducedMotion=${window.matchMedia("(prefers-reduced-motion: reduce)").matches}`,
+      );
+    }
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+      if (raf) window.cancelAnimationFrame(raf);
+      units.forEach(settle);
+    };
+  }, []);
+
+  return null;
+}

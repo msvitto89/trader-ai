@@ -98,9 +98,10 @@ export function KineticText({
             continue;
           }
           const t = 1 - dist / reach;
-          const lift = -t * 9;
-          const scale = 1 + t * 0.06;
-          el.style.transform = `translate3d(0, ${lift.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
+          // Colour and a small lift only. The full transform is left to whatever
+          // owns this glyph, so a proximity effect here can never cancel a
+          // gravity effect layered on the same element.
+          el.style.transform = `translate3d(0, ${(-t * 9).toFixed(2)}px, 0)`;
           el.style.color = `rgba(${Math.round(242 + t * 0)}, ${Math.round(
             243 - t * 79,
           )}, ${Math.round(245 - t * 180)}, 1)`;
@@ -134,7 +135,7 @@ export function KineticText({
   const words = text.split(" ");
 
   return (
-    <Tag ref={rootRef as never} className={className}>
+    <Tag ref={rootRef as never} className={className} data-mercury-skip>
       {words.map((word, wIndex) => (
         <span key={`${word}-${wIndex}`} className="inline-block whitespace-nowrap">
           {Array.from(word).map((char, cIndex) => (

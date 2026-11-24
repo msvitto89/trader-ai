@@ -606,3 +606,34 @@ html.has-liquid-cursor * {
   }
 }
 
+
+/* ─────────────────────────────────────────────────────────────
+   Mercury headings
+   ─────────────────────────────────────────────────────────────
+   Glyphs are the only moving parts. The <h1>/<h2>/<h3> element itself is
+   never restyled, so its box stays exactly where the browser put it.
+
+   .mw is a word: unbreakable, so glyph spans can never split it.
+   .mg is a glyph: inline-block so it can be scaled and rotated, at zero
+   offset so it changes ink, not layout.
+*/
+
+.mw {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.mg {
+  display: inline-block;
+  will-change: transform;
+  transform-origin: 50% 50%;
+  /* Sub-pixel smoothing keeps stretched letterforms from looking stepped. */
+  backface-visibility: hidden;
+}
+
+/* Nothing to pull toward a stylus, and a touch device has no pointer at all. */
+@media (any-pointer: coarse) and (not (any-pointer: fine)) {
+  .mg {
+    transform: none !important;
+  }
+}
