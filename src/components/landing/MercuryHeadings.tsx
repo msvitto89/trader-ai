@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * MercuryHeadings — a gravity well over every heading.
@@ -99,6 +99,8 @@ function wrapGlyphs(root: HTMLElement): HTMLElement[] {
 }
 
 export function MercuryHeadings() {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
   useEffect(() => {
     const root = document.querySelector("main");
     if (!root) return;
@@ -123,6 +125,109 @@ export function MercuryHeadings() {
     });
 
     if (!units.length) return;
+
+    /* ── Liquid-glass filter per heading ──────────────────────────────
+       Layered on top of the gravity pull, this is the refraction pass:
+
+         feTurbulence       slow noise, the resting surface of the liquid
+         feDisplacementMap  bends the rendered glyphs along that noise
+         feGaussianBlur     a hair of softness, so edges read as glass
+         feSpecularLighting a light source raked across the surface, which is
+                            what produces the wet highlight highlight
+
+       The filter is only attached while a heading is being pulled, so a
+       resting heading paints as plain text and costs nothing.
+    */
+    const NS = "http://www.w3.org/2000/svg";
+    const filters = new Map<HTMLElement, {
+      filter: SVGFilterElement;
+      turb: SVGFETurbulenceElement;
+      disp: SVGFEDisplacementMapElement;
+      specular: SVGFEDistantLightElement;
+      attached: boolean;
+    }>();
+
+    units.forEach((unit, index) => {
+      const id = `mercury-liquid-${index}`;
+
+      const filter = document.createElementNS(NS, "filter") as SVGFilterElement;
+      filter.setAttribute("id", id);
+      filter.setAttribute("x", "-20%");
+      filter.setAttribute("y", "-30%");
+      filter.setAttribute("width", "140%");
+      filter.setAttribute("height", "160%");
+      filter.setAttribute("color-interpolation-filters", "sRGB");
+
+      const turb = document.createElementNS(NS, "feTurbulence") as SVGFETurbulenceElement;
+      turb.setAttribute("type", "fractalNoise");
+      turb.setAttribute("baseFrequency", "0.008 0.02");
+      turb.setAttribute("numOctaves", "2");
+      turb.setAttribute("seed", String(index + 3));
+      turb.setAttribute("result", "noise");
+      filter.appendChild(turb);
+
+      const disp = document.createElementNS(NS, "feDisplacementMap") as SVGFEDisplacementMapElement;
+      disp.setAttribute("in", "SourceGraphic");
+      disp.setAttribute("in2", "noise");
+      disp.setAttribute("scale", "0");
+      disp.setAttribute("xChannelSelector", "R");
+      disp.setAttribute("yChannelSelector", "G");
+      disp.setAttribute("result", "warped");
+      filter.appendChild(disp);
+
+      const blur = document.createElementNS(NS, "feGaussianBlur") as SVGFEGaussianBlurElement;
+      blur.setAttribute("in", "warped");
+      blur.setAttribute("stdDeviation", "0.2");
+      blur.setAttribute("result", "softened");
+      filter.appendChild(blur);
+
+      // Specular pass: lights the surface so the warp reads as wet glass
+      // rather than as a pixel smear.
+      const spec = document.createElementNS(NS, "feSpecularLighting") as SVGFESpecularLightingElement;
+      spec.setAttribute("in", "noise");
+      spec.setAttribute("surfaceScale", "2");
+      spec.setAttribute("specularConstant", "0.55");
+      spec.setAttribute("specularExponent", "18");
+      spec.setAttribute("lighting-color", "#fff0d0");
+      spec.setAttribute("result", "spec");
+      const light = document.createElementNS(NS, "feDistantLight") as SVGFEDistantLightElement;
+      light.setAttribute("azimuth", "225");
+      light.setAttribute("elevation", "58");
+      spec.appendChild(light);
+      filter.appendChild(spec);
+
+      // feSpecularLighting lights EVERY pixel in the filter region, not just the
+      // glyphs, so on its own it paints a flat grey rectangle behind the text.
+      // Clip it to the text's own alpha first: the highlight may only exist
+      // where a letterform does.
+      const clipSpec = document.createElementNS(NS, "feComposite") as SVGFECompositeElement;
+      clipSpec.setAttribute("in", "spec");
+      clipSpec.setAttribute("in2", "softened");
+      clipSpec.setAttribute("operator", "in");
+      clipSpec.setAttribute("result", "specClipped");
+      filter.appendChild(clipSpec);
+
+      // Then screen it over the warped text, so it only ever adds light.
+      const merge = document.createElementNS(NS, "feBlend") as SVGFEBlendElement;
+      merge.setAttribute("in", "specClipped");
+      merge.setAttribute("in2", "softened");
+      merge.setAttribute("mode", "screen");
+      merge.setAttribute("result", "glass");
+      filter.appendChild(merge);
+
+      // Keep the original alpha so the result composites like text, not a box.
+      const restore = document.createElementNS(NS, "feComposite") as SVGFECompositeElement;
+      restore.setAttribute("in", "glass");
+      restore.setAttribute("in2", "softened");
+      restore.setAttribute("operator", "in");
+      filter.appendChild(restore);
+
+      svgRef.current?.appendChild(filter);
+
+      filters.set(unit.heading, {
+        filter, turb, disp, specular: light, attached: false,
+      });
+    });
 
     /* ── Measurement ──────────────────────────────────────────────── */
     const measure = () => {
@@ -150,6 +255,8 @@ export function MercuryHeadings() {
     let px = -9999;
     let py = -9999;
     let dirty = false;
+    let phase = 0;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const settle = (unit: Unit) => {
       for (const glyph of unit.glyphs) {
@@ -175,12 +282,20 @@ export function MercuryHeadings() {
           py > r.top - REACH &&
           py < r.bottom + REACH;
 
+        const rig = filters.get(unit.heading);
+
         if (!near) {
           if (unit.glyphs.length && unit.glyphs[0].el.style.transform) settle(unit);
+          if (rig?.attached) {
+            unit.heading.style.filter = "";
+            rig.disp.setAttribute("scale", "0");
+            rig.attached = false;
+          }
           continue;
         }
 
         let any = false;
+        let strongest = 0;
 
         for (const glyph of unit.glyphs) {
           const dx = px - glyph.x;
@@ -202,6 +317,11 @@ export function MercuryHeadings() {
           // well is tight rather than a broad smudge.
           const t = 1 - dist / REACH;
           const pull = t * t;
+
+          // Track the strongest pull on this heading: the glass is a property
+          // of the heading, not of each glyph, so it is driven once from the
+          // closest letter rather than overwritten 37 times per frame.
+          if (pull > strongest) strongest = pull;
 
           // Direction of the pull, in the glyph's own frame.
           const ux = dx / (dist || 1);
@@ -229,6 +349,25 @@ export function MercuryHeadings() {
             `rotate(${(-angle).toFixed(1)}deg)`;
         }
 
+        if (rig) {
+          if (any && strongest > 0.02) {
+            if (!rig.attached) {
+              unit.heading.style.filter = `url(#${rig.filter.id})`;
+              rig.attached = true;
+            }
+            rig.disp.setAttribute("scale", (strongest * 6).toFixed(2));
+            // Nudge the noise so the surface is alive while the pointer moves.
+            if (!reducedMotion) {
+              const f = 0.008 + Math.sin(phase * 0.9) * 0.0016;
+              rig.turb.setAttribute("baseFrequency", `${f.toFixed(5)} ${(f * 2.4).toFixed(5)}`);
+            }
+          } else if (rig.attached) {
+            unit.heading.style.filter = "";
+            rig.disp.setAttribute("scale", "0");
+            rig.attached = false;
+          }
+        }
+
         if (any) dirty = true;
       }
 
@@ -236,6 +375,7 @@ export function MercuryHeadings() {
       // finish, but stop as soon as everything has settled.
       if (dirty) {
         dirty = false;
+        phase += 0.09;
         raf = window.requestAnimationFrame(apply);
       }
     };
@@ -270,8 +410,18 @@ export function MercuryHeadings() {
       window.removeEventListener("scroll", measure);
       if (raf) window.cancelAnimationFrame(raf);
       units.forEach(settle);
+      filters.forEach((rig, heading) => {
+        heading.style.filter = "";
+        rig.filter.remove();
+      });
     };
   }, []);
 
-  return null;
+  return (
+    <svg
+      ref={svgRef}
+      aria-hidden
+      className="pointer-events-none absolute size-0 overflow-hidden"
+    />
+  );
 }

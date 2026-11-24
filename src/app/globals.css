@@ -563,9 +563,8 @@ a:focus-visible {
 /* ─────────────────────────────────────────────────────────────
    Cursor dot
    ─────────────────────────────────────────────────────────────
-   Deliberately plain: a 20px disc (radius 10px), grey fill, 1px white border
-   at 40% opacity. No blur, no refraction, no specular — anything heavier
-   competes with the page instead of pointing at it.
+   As simple as a pointer can be: a solid 6px dot. No ring, no blur, no tint,
+   no refraction — the cursor's only job is to say where the pointer is.
 
    The dot is pointer-events:none, so a heading underneath it can still report
    its own hover state.
@@ -581,8 +580,7 @@ html.has-liquid-cursor * {
   top: 0;
   left: 0;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(120, 120, 128, 0.35);
+  background: rgba(255, 255, 255, 0.85);
   /* Offsets are baked into the transform, so no translate here. */
   will-change: transform, opacity;
   transition: opacity 180ms ease-out;

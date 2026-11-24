@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
  * lag behind the real pointer.
  */
 
-const DISC = 20; // diameter: radius 10px
+const DISC = 6; // a dot, nothing more
 
 export function LiquidCursor() {
   const discRef = useRef<HTMLDivElement | null>(null);
@@ -91,16 +91,6 @@ export function LiquidCursor() {
       start();
     };
 
-    const onDown = () => {
-      targetScale = still ? 1 : 0.8;
-      start();
-    };
-
-    const onUp = () => {
-      targetScale = 1;
-      start();
-    };
-
     const onLeave = () => {
       visible = false;
       disc.style.opacity = "0";
@@ -114,8 +104,7 @@ export function LiquidCursor() {
     fineQuery.addEventListener?.("change", onPointerCapabilityChange);
     document.documentElement.classList.add("has-liquid-cursor");
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerdown", onDown, { passive: true });
-    window.addEventListener("pointerup", onUp, { passive: true });
+
     document.addEventListener("pointerleave", onLeave);
     window.addEventListener("blur", onLeave);
 
@@ -124,8 +113,7 @@ export function LiquidCursor() {
       fineQuery.removeEventListener?.("change", onPointerCapabilityChange);
       document.documentElement.classList.remove("has-liquid-cursor");
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointerup", onUp);
+
       document.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("blur", onLeave);
       if (raf) window.cancelAnimationFrame(raf);
