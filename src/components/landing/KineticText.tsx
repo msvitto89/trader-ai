@@ -8,7 +8,6 @@ import { useEffect, useRef } from "react";
  * Every glyph is its own element, so the headline can be animated as a field of
  * letters rather than as a block:
  *   - entrance: letters rise through a mask in sequence
- *   - proximity: letters swell and warm as the pointer passes near
  *   - scroll:    the line drifts apart slightly as the hero leaves the viewport
  *
  * Letter spacing is animated via transform/opacity only (plus a bounded
@@ -21,15 +20,9 @@ interface KineticTextProps {
   /** Applied to individual glyphs, e.g. the italic serif accent. */
   letterClassName?: string;
   delay?: number;
-  /** Pointer radius in px that influences a letter. 0 disables proximity. */
-  reach?: number;
   /** Scroll parallax strength; 0 disables it. */
   parallax?: number;
   as?: "h1" | "h2" | "p";
-  /** Excluded from the mercury wake (every heading but the hero line). */
-  mercurySkip?: boolean;
-  /** Opted in to the mercury wake (the hero line, which is otherwise skipped). */
-  mercuryTarget?: boolean;
 }
 
 export function KineticText({
@@ -37,11 +30,8 @@ export function KineticText({
   className = "",
   letterClassName = "",
   delay = 0,
-  reach = 190,
   parallax = 0.12,
   as: Tag = "h1",
-  mercurySkip = true,
-  mercuryTarget = false,
 }: KineticTextProps) {
   const rootRef = useRef<HTMLElement | null>(null);
 
@@ -79,74 +69,13 @@ export function KineticText({
       );
     });
 
-    let frame = 0;
-    let px = -9999;
-    let py = -9999;
-
-    const onPointerMove = (event: PointerEvent) => {
-      px = event.clientX;
-      py = event.clientY;
-      if (frame) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        if (!reach) return;
-        for (const el of letters) {
-          // Skip while the entrance is still running: writes would fight the
-          // transition and produce a stutter.
-          if (el.style.opacity !== "1") continue;
-          const rect = el.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          const dist = Math.hypot(px - cx, py - cy);
-          if (dist > reach) {
-            el.style.transform = "translate3d(0,0,0)";
-            el.style.color = "";
-            continue;
-          }
-          const t = 1 - dist / reach;
-          // Colour and a small lift only. The full transform is left to whatever
-          // owns this glyph, so a proximity effect here can never cancel a
-          // gravity effect layered on the same element.
-          el.style.transform = `translate3d(0, ${(-t * 9).toFixed(2)}px, 0)`;
-          el.style.color = `rgba(${Math.round(242 + t * 0)}, ${Math.round(
-            243 - t * 79,
-          )}, ${Math.round(245 - t * 180)}, 1)`;
-        }
-      });
-    };
-
-    // ── Scroll parallax on the whole line ──────────────────────────
-    const onScroll = () => {
-      if (!parallax) return;
-      const rect = root.getBoundingClientRect();
-      const progress = Math.max(
-        -1,
-        Math.min(1, 1 - rect.top / window.innerHeight),
-      );
-      root.style.transform = `translate3d(0, ${(progress * parallax * 90).toFixed(2)}px, 0)`;
-    };
-
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("scroll", onScroll);
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, [text, delay, reach, parallax]);
+  }, [text, delay, parallax]);
 
   // Split into words so wrapping still breaks at word boundaries, then letters.
   const words = text.split(" ");
 
   return (
-    <Tag
-      ref={rootRef as never}
-      className={className}
-      data-mercury-skip={mercurySkip ? "" : undefined}
-      data-mercury-target={mercuryTarget ? "" : undefined}
-    >
+    <Tag ref={rootRef as never} className={className}>
       {words.map((word, wIndex) => (
         <span key={`${word}-${wIndex}`} className="inline-block whitespace-nowrap">
           {Array.from(word).map((char, cIndex) => (
