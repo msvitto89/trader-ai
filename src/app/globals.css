@@ -561,51 +561,6 @@ a:focus-visible {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Cursor dot
-   ─────────────────────────────────────────────────────────────
-   As simple as a pointer can be: a solid 6px dot. No ring, no blur, no tint,
-   no refraction — the cursor's only job is to say where the pointer is.
-
-   The dot is pointer-events:none, so a heading underneath it can still report
-   its own hover state.
-*/
-
-html.has-liquid-cursor,
-html.has-liquid-cursor * {
-  cursor: none !important;
-}
-
-.liquid-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.85);
-  /* Offsets are baked into the transform, so no translate here. */
-  will-change: transform, opacity;
-  transition: opacity 180ms ease-out;
-}
-
-/* Touch-only devices have no pointer to replace, so the native cursor stays. */
-@media (any-pointer: coarse) and (not (any-pointer: fine)) {
-  .liquid-cursor {
-    display: none !important;
-  }
-  html.has-liquid-cursor,
-  html.has-liquid-cursor * {
-    cursor: auto !important;
-  }
-}
-
-/* Reduced motion keeps the cursor but removes all easing. */
-@media (prefers-reduced-motion: reduce) {
-  .liquid-cursor {
-    transition: none;
-  }
-}
-
-
-/* ─────────────────────────────────────────────────────────────
    Mercury headings
    ─────────────────────────────────────────────────────────────
    Glyphs are the only moving parts. The <h1>/<h2>/<h3> element itself is
