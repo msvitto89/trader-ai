@@ -24,9 +24,14 @@ export function LiquidCursor() {
     const disc = discRef.current;
     if (!disc) return;
 
-    // Only replace the pointer when there is a real fine pointer.
-    const finePointer = window.matchMedia("(any-pointer: fine)");
-    if (!finePointer.matches) return;
+    // Opt OUT of touch rather than opting IN to a fine pointer. Media-query
+    // capabilities are unreliable in embedded webviews, remote desktops and
+    // some VMs, which report neither fine nor coarse. Opting in made the
+    // cursor vanish for those users with no fallback at all. Only a device
+    // that reports touch AND no fine pointer is excluded.
+    const coarseQuery = window.matchMedia("(any-pointer: coarse)");
+    const fineQuery = window.matchMedia("(any-pointer: fine)");
+    if (coarseQuery.matches && !fineQuery.matches) return;
 
     // Reduced motion still gets the cursor — it is a pointer, not an effect —
     // but it tracks 1:1 with no easing and no scaling.
@@ -102,10 +107,11 @@ export function LiquidCursor() {
     };
 
     const onPointerCapabilityChange = () => {
-      if (!finePointer.matches) onLeave();
+      if (coarseQuery.matches && !fineQuery.matches) onLeave();
     };
 
-    finePointer.addEventListener?.("change", onPointerCapabilityChange);
+    coarseQuery.addEventListener?.("change", onPointerCapabilityChange);
+    fineQuery.addEventListener?.("change", onPointerCapabilityChange);
     document.documentElement.classList.add("has-liquid-cursor");
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
@@ -114,7 +120,8 @@ export function LiquidCursor() {
     window.addEventListener("blur", onLeave);
 
     return () => {
-      finePointer.removeEventListener?.("change", onPointerCapabilityChange);
+      coarseQuery.removeEventListener?.("change", onPointerCapabilityChange);
+      fineQuery.removeEventListener?.("change", onPointerCapabilityChange);
       document.documentElement.classList.remove("has-liquid-cursor");
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);

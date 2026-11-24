@@ -48,8 +48,13 @@ export function LiquidHeadings() {
     const svg = svgRef.current;
     if (!svg) return;
 
-    // Water needs motion to read as water, so this is off under reduced motion.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Reduced motion does NOT disable this. The ripple is driven entirely by
+    // the pointer, so it only ever moves while the user is moving — it is not
+    // autonomous motion, which is what the preference is about. Gating on it
+    // made the effect invisible for anyone with the setting enabled, which
+    // reads as "the feature is broken". The only concession: the ambient
+    // surface drift is skipped so nothing stirs while the cursor is at rest.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const root = document.querySelector("main");
     if (!root) return;
@@ -58,6 +63,17 @@ export function LiquidHeadings() {
       root.querySelectorAll<HTMLElement>("h1, h2, h3"),
     ).filter((h) => !h.closest("[data-liquid-skip]"));
     if (!headings.length) return;
+
+    // A one-line self-report, visible in the console. If the effect is ever
+    // reported as missing again, this says exactly which condition failed
+    // instead of requiring another round of guessing.
+    if (process.env.NODE_ENV !== "production" || /[?&]debug=1/.test(window.location.search)) {
+      console.info(
+        `[water] ready — ${headings.length} headings, ` +
+          `reducedMotion=${window.matchMedia("(prefers-reduced-motion: reduce)").matches}, ` +
+          `pointer=${window.matchMedia("(any-pointer: fine)").matches ? "fine" : window.matchMedia("(any-pointer: coarse)").matches ? "coarse" : "none-reported"}`,
+      );
+    }
 
     const NS = "http://www.w3.org/2000/svg";
     const rigs: Rig[] = [];
@@ -219,7 +235,8 @@ export function LiquidHeadings() {
           // so a wide heading and a narrow one ripple the same way.
           const swell = 0.1 + (1 - rig.energy) * 0.42;
           rig.rings.forEach((ring, r) => {
-            const radius = swell + r * 0.1;
+            const wobble = reduced ? 0 : Math.sin(phase * 1.1 + r) * 0.15;
+            const radius = swell + r * 0.1 + wobble;
             const size = radius * 2;
             const img = ring.previousElementSibling as SVGFEImageElement | null;
             if (img) {
@@ -235,12 +252,15 @@ export function LiquidHeadings() {
           const scale = (MAX_RIPPLE * rig.energy + MAX_NOISE * rig.energy).toFixed(2);
           rig.displacement.setAttribute("scale", scale);
 
-          // Drift the resting surface so it never looks frozen.
-          const f = 0.004 + Math.sin(phase * 0.6) * 0.0009;
-          rig.turbulence.setAttribute(
-            "baseFrequency",
-            `${f.toFixed(5)} ${(f * 2.7).toFixed(5)}`,
-          );
+          // Drift the resting surface so it never looks frozen. Skipped under
+          // reduced motion, where only the pointer may cause movement.
+          if (!reduced) {
+            const f = 0.004 + Math.sin(phase * 0.6) * 0.0009;
+            rig.turbulence.setAttribute(
+              "baseFrequency",
+              `${f.toFixed(5)} ${(f * 2.7).toFixed(5)}`,
+            );
+          }
         } else if (rig.mounted) {
           // Fully settled: drop the filter so the heading paints normally and
           // costs nothing.
