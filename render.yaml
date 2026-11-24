@@ -3,11 +3,16 @@ services:
     name: tradia-ai
     runtime: docker
     plan: free
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
+      # Free instances have an ephemeral filesystem; /tmp is the only writable
+      # path. scripts/bootstrap.mjs re-provisions the account on each boot.
+      - key: TRADIA_DB_PATH
+        value: /tmp/tradia.db
       # Set these in the Render dashboard (sync: false keeps them out of git).
       - key: SEED_EMAIL
         sync: false

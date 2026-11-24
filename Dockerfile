@@ -12,9 +12,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 ENV NODE_ENV=production
-# SQLite needs a writable directory. Hosts without a persistent disk recreate
-# it on boot; scripts/bootstrap.mjs re-provisions the account when it is gone.
-ENV TRADIA_DB_PATH=/app/data/tradia.db
+# SQLite needs a writable directory. Set TRADIA_DB_PATH to a writable path on
+# the host: a mounted volume for persistence, or /tmp on ephemeral free tiers
+# (where scripts/bootstrap.mjs re-provisions the account on each boot).
 RUN mkdir -p /app/data
 
 EXPOSE 3000
