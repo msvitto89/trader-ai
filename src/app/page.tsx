@@ -3,7 +3,16 @@ import { getCurrentUser } from "@/lib/auth";
 import { SmoothScroll } from "@/components/landing/SmoothScroll";
 import { Nav } from "@/components/landing/Nav";
 import { Hero } from "@/components/landing/Hero";
-import { ProductShowcase, FeatureRisk, FeatureJournal, TrustStrip, Pricing } from "@/components/landing/FeatureSections";
+import {
+  ProductShowcase,
+  FeatureRisk,
+  FeatureJournal,
+  TrustStrip,
+  Pricing,
+  MetricsBand,
+} from "@/components/landing/FeatureSections";
+import { MarketExplorer } from "@/components/landing/MarketExplorer";
+import { ScrollProgress } from "@/components/landing/interactive";
 import { Faq } from "@/components/landing/Faq";
 import { Footer } from "@/components/landing/Footer";
 
@@ -21,9 +30,12 @@ export default async function LandingPage() {
   return (
     <div className="relative min-h-screen bg-black text-white">
       <SmoothScroll />
+      <ScrollProgress />
       <Nav />
       <main>
         <Hero />
+        <MarketExplorer />
+        <MetricsBand />
         <ProductShowcase />
         <FeatureRisk />
         <FeatureJournal />

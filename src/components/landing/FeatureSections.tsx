@@ -11,6 +11,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { FadeInUp } from "./reveal";
+import { CountUp, SpotlightCard, TiltCard } from "./interactive";
 
 function VideoBackdrop({ src }: { src: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
@@ -452,14 +453,14 @@ export function TrustStrip() {
 
         <FadeInUp delay={0.1} stagger={0.08} className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] sm:grid-cols-2 lg:grid-cols-4">
           {TRUST.map((item) => (
-            <div key={item.title} className="bg-[#0a0b0d] p-6">
+            <SpotlightCard key={item.title} className="bg-[#0a0b0d] p-6">
               <p className="text-[13px] font-semibold text-white">
                 {item.title}
               </p>
               <p className="mt-2 text-[12.5px] leading-relaxed text-gray-400">
                 {item.body}
               </p>
-            </div>
+            </SpotlightCard>
           ))}
         </FadeInUp>
 
@@ -539,9 +540,9 @@ export function Pricing() {
 
         <FadeInUp delay={0.1} stagger={0.1} className="mt-14 grid gap-4 md:grid-cols-2">
           {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative rounded-2xl border p-7 ${
+            <TiltCard key={plan.name} max={4}>
+            <SpotlightCard
+              className={`h-full rounded-2xl border p-7 ${
                 plan.highlight
                   ? "border-accent/25 bg-[linear-gradient(180deg,rgba(217,164,65,0.06),rgba(255,255,255,0.01))]"
                   : "border-white/10 bg-white/[0.015]"
@@ -580,7 +581,8 @@ export function Pricing() {
               >
                 {plan.cta}
               </Link>
-            </div>
+            </SpotlightCard>
+            </TiltCard>
           ))}
         </FadeInUp>
 
@@ -596,4 +598,41 @@ export function Pricing() {
 /** Decorative mic icon kept for the chat mockup's input row. */
 export function MicGlyph({ className = "size-3.5" }: { className?: string }) {
   return <Mic className={className} />;
+}
+
+/* ── Metrics band ────────────────────────────────────────────────── */
+
+const METRICS = [
+  { value: 7, suffix: "", label: "Timeframes analysed per instrument", decimals: 0 },
+  { value: 15, suffix: "", label: "Instruments ranked by the scanner", decimals: 0 },
+  { value: 6, suffix: "", label: "Independent engines in the pipeline", decimals: 0 },
+  { value: 100, suffix: "%", label: "Setups carrying a stop and invalidation", decimals: 0 },
+];
+
+export function MetricsBand() {
+  return (
+    <section className="border-y border-white/[0.05] px-6 py-16">
+      <div className="mx-auto max-w-7xl">
+        <FadeInUp
+          stagger={0.09}
+          className="grid grid-cols-2 gap-y-10 sm:grid-cols-4 sm:gap-x-6"
+        >
+          {METRICS.map((metric) => (
+            <div key={metric.label} className="text-center sm:text-left">
+              <p className="font-mono text-3xl font-medium tracking-tight text-white sm:text-4xl">
+                <CountUp
+                  to={metric.value}
+                  suffix={metric.suffix}
+                  decimals={metric.decimals}
+                />
+              </p>
+              <p className="mx-auto mt-2 max-w-[180px] text-[11.5px] leading-relaxed text-gray-500 sm:mx-0">
+                {metric.label}
+              </p>
+            </div>
+          ))}
+        </FadeInUp>
+      </div>
+    </section>
+  );
 }
