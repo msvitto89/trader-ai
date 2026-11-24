@@ -234,3 +234,10 @@ TRADIA AI provides market analysis and educational information and does not guar
 results. Setups are potential scenarios derived from available market data — not recommendations or
 certainties. Prices may be delayed or simulated; check the data-source badge. Trading involves
 substantial risk of loss. You are solely responsible for your decisions.
+
+## Deployment
+
+Free, public URL outside the development panel: see **[DEPLOY.md](./DEPLOY.md)**.
+Short version — Render's free Docker tier + `render.yaml`, with the account
+re-provisioned from `SEED_EMAIL`/`SEED_PASSWORD` on each boot because free hosts
+have no persistent disk.

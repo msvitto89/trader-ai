@@ -19,8 +19,12 @@ import { createJournalEntry, createPosition, addWatchlist } from "../src/lib/db/
 import { DemoMarketDataProvider } from "../src/lib/market-data/demo";
 import type { JournalEntry, TradingStyle } from "../src/lib/types";
 
-const EMAIL = "demo@tradia.ai";
-const PASSWORD = "tradia1234";
+const EMAIL = process.env.SEED_EMAIL ?? "demo@tradia.ai";
+const PASSWORD = process.env.SEED_PASSWORD ?? "tradia1234";
+const NAME = process.env.SEED_NAME ?? "Alex Trader";
+/** Populate the sample journal / positions / alerts. Set to "0" for a clean workspace. */
+const WITH_SAMPLE_DATA = process.env.SEED_SAMPLE_DATA !== "0";
+const PLAN = (process.env.SEED_PLAN === "free" ? "free" : "pro") as "free" | "pro";
 const DAY = 86_400_000;
 
 interface SeedTrade {
@@ -95,9 +99,9 @@ async function main() {
       [
         userId,
         EMAIL,
-        "Alex Trader",
+        NAME,
         hashPassword(PASSWORD),
-        "pro",
+        PLAN,
         Date.now() - 60 * DAY,
         Date.now() - 59 * DAY,
         JSON.stringify({}),
@@ -106,7 +110,7 @@ async function main() {
     console.log(`Created demo account (${EMAIL} / ${PASSWORD})`);
   }
 
-  execute("UPDATE users SET plan = 'pro', onboarded_at = ? WHERE id = ?", [Date.now() - 59 * DAY, userId]);
+  execute("UPDATE users SET plan = ?, onboarded_at = ? WHERE id = ?", [PLAN, Date.now() - 59 * DAY, userId]);
   updatePreferences(userId, {
     markets: ["crypto", "forex", "commodities"],
     style: "swing",
@@ -116,6 +120,11 @@ async function main() {
     defaultBalance: 25_000,
     currency: "USD",
   });
+
+  if (!WITH_SAMPLE_DATA) {
+    console.log(`\nWorkspace ready (clean):\n  email:    ${EMAIL}\n  password: ${PASSWORD}\n  plan:     ${PLAN}\n`);
+    return;
+  }
 
   for (const symbol of ["BTC/USD", "ETH/USD", "XAU/USD", "EUR/USD", "NASDAQ"]) {
     addWatchlist(userId, symbol);
@@ -208,7 +217,7 @@ async function main() {
       "Demo workspace ready:",
       `  email:    ${EMAIL}`,
       `  password: ${PASSWORD}`,
-      `  plan:     Pro (demo billing)`,
+      `  plan:     ${PLAN} (demo billing)`,
       `  journal:  ${created} trades`,
       `  paper:    ${openPlans.length} open positions`,
       "",

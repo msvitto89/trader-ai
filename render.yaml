@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: tradia-ai
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render dashboard (sync: false keeps them out of git).
+      - key: SEED_EMAIL
+        sync: false
+      - key: SEED_PASSWORD
+        sync: false
+      - key: TRADIA_SESSION_SECRET
+        generateValue: true
+      - key: SEED_SAMPLE_DATA
+        value: "1"
+      - key: SEED_PLAN
+        value: "pro"
+      - key: MARKET_DATA_PROVIDER
+        value: demo
