@@ -55,8 +55,8 @@ export function Hero() {
       id="about"
       className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
     >
-      {/* 0 — fluid distortion field: the surface the candles sit on */}
-      <FluidShader className="pointer-events-none absolute inset-0 -z-30 h-full w-full opacity-40" />
+      {/* Hover-driven liquid warp for the headline. Renders off-screen. */}
+      <FluidShader />
 
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -93,6 +93,7 @@ export function Hero() {
 
         <KineticText
           text="Read the market"
+          fluidTarget
           delay={0.18}
           className="max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
         />

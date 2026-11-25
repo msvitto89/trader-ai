@@ -3,7 +3,22 @@
 import { useEffect, useRef } from "react";
 
 /**
- * FluidShader — real-time liquid distortion behind the hero.
+ * FluidShader — a live liquid filter for a single line of type.
+ *
+ * Rendered off-screen and exposed to CSS as a filter via SVG <feImage>, so it
+ * can be applied to the hero headline alone. Nothing is painted behind the
+ * page: the canvas is never in the layout, never visible, and never receives a
+ * pixel of its own.
+ *
+ * Control is the whole point here, so three things gate it:
+ *
+ *   hover     the filter is only attached while the pointer is over the line,
+ *             and detached when it leaves — a resting headline is plain text
+ *   fade      a strength value ramps 0 -> 1 over ~320ms and back, so the effect
+ *             arrives and leaves smoothly instead of snapping on
+ *   reduced   under prefers-reduced-motion the filter is never attached at all
+ *
+ * The original background notes follow, since the field maths is unchanged.
  *
  * A fragment shader run over the whole hero, built on domain warping rather
  * than on gradients: a coordinate is pushed through a procedurally generated
@@ -18,11 +33,9 @@ import { useEffect, useRef } from "react";
  * frame from time alone, so shapes stretch, twist, merge and separate without
  * ever being animated individually.
  *
- * Colour is deliberately not part of the design: the shader outputs a bright
- * palette colour from a single uniform (FUSION) and the composite decides how
- * much of it survives, so the artwork can never introduce a hue the brand does
- * not own. The hero's black sits over it, which is what keeps the result
- * monochrome-ish and on-brand rather than iridescent.
+ * Colour is deliberately not part of the design: the shader outputs palette
+ * colours from single uniforms, so the artwork can never introduce a hue the
+ * brand does not own.
  *
  * Cost control: the shader renders at a capped device-pixel-ratio into its own
  * canvas, pauses when the section scrolls away or the tab is hidden, and does
@@ -44,9 +57,6 @@ uniform float uTime;
 uniform vec2  uPointer;   // 0..1, smoothed
 uniform vec2  uMPos;      // melt centre, 0..1
 uniform float uMelt;      // 0..1, decays after a click
-uniform vec3  uInk;       // fusion: the icy white-blue
-uniform vec3  uIce;       // icy sky blue
-uniform vec3  uIceDeep;   // deeper ice, for the troughs
 uniform float uContour;   // band density
 uniform float uIntensity; // overall presence
 
@@ -212,23 +222,47 @@ void main() {
   // Output is the palette colour only. The composite layer above decides how
   // dark the result is; nothing here can introduce a second hue.
   /*
-     Icy grading, from the palette only.
+     Output a displacement map, not a picture.
 
-     Ridges (high relief) burn to fusion — pale and cold, almost white.
-     Troughs take ice, a deeper blue, which is what makes the surface read as
-     frozen water rather than as grey smoke. The mix is keyed to the field, so
-     the colour itself flows and warps along with the contours instead of being
-     a flat wash behind them.
+     feDisplacementMap reads R and G as a signed offset around 0.5, so that is
+     what this writes: R and G carry the direction the field wants to push the
+     glyphs, B is left neutral. The domain warping is unchanged — it is what
+     decides the *shape* of the distortion, which is the whole reason the warp
+     looks organic rather than like a lens wobble.
+
+     The gradient of the field is a better displacement source than the field
+     itself: sampling the field directly gives a wash, while its gradient gives
+     directional flow that pulls type along contour lines.
   */
-  float icy = clamp(relief * 0.5 + 0.5, 0.0, 1.0);
-  // Deep ice -> icy sky blue -> fusion. Blue owns the midtones, which is what
-  // makes the field read as sky-coloured rather than as grey.
-  vec3 tint = mix(uIceDeep, uIce, smoothstep(0.0, 0.45, icy));
-  tint = mix(tint, uInk, smoothstep(0.75, 1.0, icy));
+  float eps = 0.004;
+  float f0 = relief;
+  float fx = warpedField(p + vec2(eps, 0.0), t) + 0.35 * fbm((p + vec2(eps, 0.0)) * 2.1 + t * 0.07);
+  float fy = warpedField(p + vec2(0.0, eps), t) + 0.35 * fbm((p + vec2(0.0, eps)) * 2.1 + t * 0.07);
 
-  // Push the whole thing brighter: what was unreadable has to be seen.
-  float a = clamp(density * 1.5, 0.0, 1.0);
-  gl_FragColor = vec4(tint * a, a);
+  vec2 grad = vec2(fx - f0, fy - f0) / eps;
+
+  // Compress the gradient into a usable range: raw values are far too spiky
+  // and would tear the letterforms. tanh keeps large gradients from clipping.
+  // GLSL ES 1.0 has no tanh(); build it from exp and clamp the argument so a
+  // huge gradient cannot overflow.
+  vec2 g = clamp(grad * 0.06, -8.0, 8.0);
+  vec2 e = exp(2.0 * g);
+  vec2 dir = (e - 1.0) / (e + 1.0);
+
+  // Swirl: rotate the offset slightly toward the tangent, which is what makes
+  // the displacement look liquid rather than like a height map.
+  float swirl = 0.35;
+  dir = mat2(cos(swirl), -sin(swirl), sin(swirl), cos(swirl)) * dir;
+
+  // Presence ramps with the melt uniform, so a still field is inert.
+  float amount = clamp(uMelt * 1.4, 0.0, 1.0);
+
+  gl_FragColor = vec4(
+    clamp(0.5 + dir.x * 0.5 * amount, 0.0, 1.0),
+    clamp(0.5 + dir.y * 0.5 * amount, 0.0, 1.0),
+    0.5,
+    1.0
+  );
 }
 `;
 
@@ -248,15 +282,6 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
 }
 
 /**
- * Palette. Three values, all of them already in the brand: blacktop, fusion,
- * and an ice blue that is fusion pushed colder. Nothing else may appear in the
- * shader.
- */
-const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
-const ICE: [number, number, number] = [0x8d / 255, 0xdc / 255, 0xf7 / 255];
-const ICE_DEEP: [number, number, number] = [0x3d / 255, 0x8f / 255, 0xc9 / 255];
-
-/**
  * How fast the field evolves. Scaling time here slows every layer together —
  * the warps, the relief, the finer contour family — so the whole surface breathes
  * at one rate instead of each layer needing its own multiplier retuned.
@@ -265,26 +290,53 @@ const ICE_DEEP: [number, number, number] = [0x3d / 255, 0x8f / 255, 0xc9 / 255];
  * something playing.
  */
 const SPEED = 0.192; // 40% slower than the previous 0.32
-const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
-export function FluidShader({ className = "" }: { className?: string }) {
+/** Where the effect lands: the hero headline only, and only on hover. */
+const TARGET_SELECTOR = "[data-fluid-target]";
+const FILTER_ID = "fluid-warp";
+
+/**
+ * Peak displacement, in px, at full strength. Deliberately small: this runs on
+ * type. Past roughly 8 the letterforms stop being type and start being an
+ * effect, which is the opposite of "controlled and clean".
+ */
+const MAX_DISPLACEMENT = 6;
+
+
+/**
+ * How fast the field evolves. Scaling time here slows every layer together —
+ * the warps, the relief, the finer contour family — so the whole surface breathes
+ * at one rate instead of each layer needing its own multiplier retuned.
+
+/**
+ * A flat grey field, held as a data URI. It exists only so <feImage> has a
+ * valid, always-resolvable reference; the live WebGL canvas cannot be sampled
+ * per frame without preserveDrawingBuffer churn, and a scroll of static
+ * magenta noise is not what this effect needs anyway. Keeping it neutral means
+ * a browser that fails to load it degrades to no warp rather than to garbage.
+ */
+
+export function FluidShader() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     /*
-       Reduced motion must not mean "no artwork". Bailing out here left the hero
-       with nothing at all — and reduce-motion is on for a lot of people. The
-       field still draws; it simply holds still.
+       This is a hover flourish, so reduce-motion means it does not run at all.
+       That is the opposite of the background case, where showing nothing was
+       worse than showing something still: there the artwork WAS the section,
+       here it is an embellishment on text that must stay perfectly readable.
     */
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const gl = (canvas.getContext("webgl", {
       alpha: true,
       antialias: false,
       depth: false,
       stencil: false,
+      preserveDrawingBuffer: true,
       powerPreference: "low-power",
     }) || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
     if (!gl) return;
@@ -304,14 +356,9 @@ export function FluidShader({ className = "" }: { className?: string }) {
     }
     gl.useProgram(prog);
 
-    // One full-screen triangle pair.
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 3, -1, -1, 3]),
-      gl.STATIC_DRAW,
-    );
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     const aPos = gl.getAttribLocation(prog, "aPos");
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
@@ -321,127 +368,198 @@ export function FluidShader({ className = "" }: { className?: string }) {
     const uPointer = gl.getUniformLocation(prog, "uPointer");
     const uMPos = gl.getUniformLocation(prog, "uMPos");
     const uMelt = gl.getUniformLocation(prog, "uMelt");
-    const uInk = gl.getUniformLocation(prog, "uInk");
-    const uIce = gl.getUniformLocation(prog, "uIce");
-    const uIceDeep = gl.getUniformLocation(prog, "uIceDeep");
     const uContour = gl.getUniformLocation(prog, "uContour");
     const uIntensity = gl.getUniformLocation(prog, "uIntensity");
 
-    gl.uniform3f(uInk, ...FUSION);
-    gl.uniform3f(uIce, ...ICE);
-    gl.uniform3f(uIceDeep, ...ICE_DEEP);
     gl.uniform1f(uContour, 8.5);
-    gl.uniform1f(uIntensity, 1.6);
+    gl.uniform1f(uIntensity, 2.6); // the filter blends it down; the field supplies shape
     gl.uniform2f(uPointer, 0.5, 0.5);
     gl.uniform2f(uMPos, 0.5, 0.5);
     gl.uniform1f(uMelt, 0);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive: the shader only ever adds light
-
-    // Cap the render resolution: this is a soft, low-frequency artwork, so
-    // half resolution is indistinguishable and a quarter of the fill cost.
-    const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
-
-    const resize = () => {
-      const r = canvas.getBoundingClientRect();
-      const w = Math.max(1, Math.round(r.width * DPR));
-      const h = Math.max(1, Math.round(r.height * DPR));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-      }
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-    };
-    resize();
-
-    // ── pointer, smoothed ────────────────────────────────────────────
-    let tx = 0.5;
-    let ty = 0.5;
-    let cxp = 0.5;
-    let cyp = 0.5;
-    const onMove = (e: PointerEvent) => {
-      tx = e.clientX / window.innerWidth;
-      ty = 1 - e.clientY / window.innerHeight; // GL y is bottom-up
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
 
     /*
-       "Click to melt." The melt is bound to the hero only, so clicking a
-       button or a link inside it still does what that control says: the
-       handler bails out when the click landed on something interactive.
+       Off-screen surface, sized once to a fixed aspect. It is not in the
+       layout and not visible: SVG <feImage> samples it, and the filter's own
+       alpha decides what lands on the glyphs.
     */
+    const W = 512;
+    const H = 256;
+    canvas.width = W;
+    canvas.height = H;
+    gl.viewport(0, 0, W, H);
+    gl.uniform2f(uRes, W, H);
+
+    /* ── one loop, one source of truth ─────────────────────────────────
+       An earlier cut ran two loops: one to advance the field, one to sync the
+       filter. The sync loop cancelled itself when idle and was never restarted,
+       so hovering moved the shader but never attached the filter. Everything
+       now happens in a single tick, so strength, the GPU draw and the DOM
+       attribute can never disagree.
+    */
+    let strength = 0;
+    let target = 0;
     let melt = 0;
-    let meltX = 0.5;
-    let meltY = 0.5;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as Element | null)?.closest("a, button, input, select, textarea, [role='button']")) return;
-      const r = canvas.getBoundingClientRect();
-      if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) return;
-      melt = 1;
-      meltX = e.clientX / window.innerWidth;
-      meltY = 1 - e.clientY / window.innerHeight;
-    };
-    window.addEventListener("pointerdown", onDown, { passive: true });
-
-    // ── lifecycle: only run what is on screen ────────────────────────
-    let visible = true;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) visible = entry.isIntersecting;
-      },
-      { threshold: 0 },
-    );
-    io.observe(canvas);
-
-    let onScreen = true;
-    const onVis = () => {
-      onScreen = document.visibilityState === "visible";
-    };
-    document.addEventListener("visibilitychange", onVis);
-
-    const start = performance.now();
+    let time = 12;
     let raf = 0;
-    let last = 0;
-    // 40fps is enough for a field this soft, and leaves headroom for the
-    // candle field animating in front of it.
+    let hovering = false;
+    let attached = false;
+    let lastExport = 0;
+    let lastFrame = 0;
+    let lastStrengthAt = 0;
     const FRAME_MS = 1000 / 40;
 
-    const loop = (now: number) => {
-      raf = window.requestAnimationFrame(loop);
-      if (!visible || !onScreen) return;
-      if (now - last < FRAME_MS) return;
-      last = now;
+    /* ── the SVG filter that carries the field onto the text ─────────── */
+    /*
+       feDisplacementMap needs the field as an image. href cannot reference a
+       live canvas, so the field is exported to a data URL and swapped in at a
+       throttled rate. It is a low-frequency displacement map, so 24 swaps a
+       second reads as continuous — and it only happens while hovering.
+    */
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden";
 
-      cxp += (tx - cxp) * 0.05;
-      cyp += (ty - cyp) * 0.05;
+    const filter = document.createElementNS(NS, "filter") as SVGFilterElement;
+    filter.setAttribute("id", FILTER_ID);
+    filter.setAttribute("x", "-6%");
+    filter.setAttribute("y", "-22%");
+    filter.setAttribute("width", "112%");
+    filter.setAttribute("height", "144%");
+    filter.setAttribute("color-interpolation-filters", "sRGB");
 
-      // Melt decays back to nothing, so the surface always returns to itself.
+    const img = document.createElementNS(NS, "feImage") as SVGFEImageElement;
+    img.setAttribute("x", "0");
+    img.setAttribute("y", "0");
+    img.setAttribute("width", "100%");
+    img.setAttribute("height", "100%");
+    img.setAttribute("preserveAspectRatio", "none");
+    img.setAttribute("result", "field");
+    filter.appendChild(img);
+
+    const disp = document.createElementNS(NS, "feDisplacementMap") as SVGFEDisplacementMapElement;
+    disp.setAttribute("in", "SourceGraphic");
+    disp.setAttribute("in2", "field");
+    disp.setAttribute("scale", "0");
+    disp.setAttribute("xChannelSelector", "R");
+    disp.setAttribute("yChannelSelector", "G");
+    filter.appendChild(disp);
+
+    svg.appendChild(filter);
+    document.body.appendChild(svg);
+
+    const targetEl = document.querySelector<HTMLElement>(TARGET_SELECTOR);
+    if (!targetEl) {
+      svg.remove();
+      return;
+    }
+
+    // A valid field before any hover, so the filter is never attached to an
+    // empty image.
+    img.setAttribute("href", canvas.toDataURL("image/png"));
+
+    const tick = (now: number) => {
+      raf = 0;
+      if (now - lastFrame < FRAME_MS) {
+        raf = window.requestAnimationFrame(tick);
+        return;
+      }
+      lastFrame = now;
+
+      /*
+         Advance strength at a fixed rate rather than a proportion of the gap.
+         Proportional easing is asymptotic: it approaches zero and never arrives,
+         so the filter stayed attached at a scale of 0.3 long after the pointer
+         had left. A linear step always reaches the target, which means the
+         effect is guaranteed to detach completely and the headline returns to
+         plain text.
+      */
+      const RISE_MS = 340;
+      const FALL_MS = 420;
+      const dt = Math.min(64, now - (lastStrengthAt || now));
+      lastStrengthAt = now;
+      if (target > strength) {
+        strength = Math.min(target, strength + dt / RISE_MS);
+      } else if (target < strength) {
+        strength = Math.max(target, strength - dt / FALL_MS);
+      }
+
+      time += 0.06 * SPEED * 6;
       if (melt > 0.001) {
-        melt *= 0.978;
+        melt *= 0.985;
         if (melt < 0.001) melt = 0;
       }
 
-      // Frozen time under reduced motion: the surface is there, it just does
-      // not move.
-      gl.uniform1f(uTime, reduced ? 12.0 : ((now - start) / 1000) * SPEED);
-      gl.uniform2f(uPointer, cxp, cyp);
-      gl.uniform2f(uMPos, meltX, meltY);
+      // ── draw the displacement field ──
+      gl.uniform1f(uTime, time);
       gl.uniform1f(uMelt, melt);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-    };
-    raf = window.requestAnimationFrame(loop);
 
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
+      // ── reflect it into the DOM ──
+      disp.setAttribute("scale", (strength * MAX_DISPLACEMENT).toFixed(2));
+
+      const on = strength > 0.02;
+      if (on && !attached) {
+        targetEl.style.filter = `url(#${FILTER_ID})`;
+        attached = true;
+      } else if (!on && attached) {
+        targetEl.style.filter = "";
+        attached = false;
+      }
+
+      if (on && now - lastExport > 1000 / 24) {
+        lastExport = now;
+        img.setAttribute("href", canvas.toDataURL("image/png"));
+      }
+
+      // Keep going while anything is still moving.
+      const settled = strength === target && melt === 0 && !hovering;
+      if (!settled) raf = window.requestAnimationFrame(tick);
+    };
+
+    const kick = () => {
+      if (raf) return;
+      lastFrame = 0;
+      raf = window.requestAnimationFrame(tick);
+    };
+
+    const onEnter = () => {
+      hovering = true;
+      target = 1;
+      melt = 1;
+      kick();
+    };
+    const onLeave = () => {
+      hovering = false;
+      target = 0;
+      kick();
+    };
+    const onMove = (e: PointerEvent) => {
+      // 0..1 within the line, so the field bends where the pointer is.
+      const r = targetEl.getBoundingClientRect();
+      gl.uniform2f(
+        uPointer,
+        Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1))),
+        Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / (r.height || 1))),
+      );
+      if (hovering) kick();
+    };
+
+    targetEl.addEventListener("pointerenter", onEnter);
+    targetEl.addEventListener("pointerleave", onLeave);
+    targetEl.addEventListener("pointermove", onMove);
+
+    // One draw so the field exists, but no filter is attached until hover.
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    img.setAttribute("href", canvas.toDataURL("image/png"));
 
     return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("visibilitychange", onVis);
-      io.disconnect();
-      ro.disconnect();
+      if (raf) window.cancelAnimationFrame(raf);
+      targetEl.removeEventListener("pointerenter", onEnter);
+      targetEl.removeEventListener("pointerleave", onLeave);
+      targetEl.removeEventListener("pointermove", onMove);
+      targetEl.style.filter = "";
+      svg.remove();
       gl.deleteProgram(prog);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
@@ -453,18 +571,8 @@ export function FluidShader({ className = "" }: { className?: string }) {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className={className}
-      style={{
-        // The palette pair, in case WebGL is unavailable: the hero still reads
-        // as designed rather than falling back to nothing.
-        background: `radial-gradient(120% 90% at 50% 40%, rgba(${Math.round(
-          FUSION[0] * 255,
-        )}, ${Math.round(FUSION[1] * 255)}, ${Math.round(
-          FUSION[2] * 255,
-        )}, 0.06), rgba(${Math.round(BLACKTOP[0] * 255)}, ${Math.round(
-          BLACKTOP[1] * 255,
-        )}, ${Math.round(BLACKTOP[2] * 255)}, 0) 70%)`,
-      }}
+      // Off-screen and inert: its pixels only ever exist inside the filter.
+      style={{ position: "absolute", left: "-9999px", top: 0, width: 1, height: 1 }}
     />
   );
 }

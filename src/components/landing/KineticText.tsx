@@ -22,6 +22,8 @@ interface KineticTextProps {
   delay?: number;
   /** Scroll parallax strength; 0 disables it. */
   parallax?: number;
+  /** Marks this line as the hover target for the liquid warp filter. */
+  fluidTarget?: boolean;
   as?: "h1" | "h2" | "p";
 }
 
@@ -31,6 +33,7 @@ export function KineticText({
   letterClassName = "",
   delay = 0,
   parallax = 0.12,
+  fluidTarget = false,
   as: Tag = "h1",
 }: KineticTextProps) {
   const rootRef = useRef<HTMLElement | null>(null);
@@ -75,7 +78,11 @@ export function KineticText({
   const words = text.split(" ");
 
   return (
-    <Tag ref={rootRef as never} className={className}>
+    <Tag
+      ref={rootRef as never}
+      className={className}
+      data-fluid-target={fluidTarget ? "" : undefined}
+    >
       {words.map((word, wIndex) => (
         <span key={`${word}-${wIndex}`} className="inline-block whitespace-nowrap">
           {Array.from(word).map((char, cIndex) => (
