@@ -44,7 +44,8 @@ uniform float uTime;
 uniform vec2  uPointer;   // 0..1, smoothed
 uniform vec2  uMPos;      // melt centre, 0..1
 uniform float uMelt;      // 0..1, decays after a click
-uniform vec3  uInk;       // the bright palette colour
+uniform vec3  uInk;       // fusion: the icy white-blue
+uniform vec3  uIce;       // ice: the colder cyan-blue that tints the troughs
 uniform float uContour;   // band density
 uniform float uIntensity; // overall presence
 
@@ -196,14 +197,28 @@ void main() {
   density *= mix(0.75, 1.0, shear * 0.5 + 0.5);
   // Keep-out under the type. The distortion belongs around and behind the
   // copy, not through it.
-  float typeSafe = smoothstep(0.16, 0.62, length((uv - vec2(0.5, 0.52)) * vec2(1.0, 1.55)));
-  density *= mix(0.34, 1.0, typeSafe);
+  float typeSafe = smoothstep(0.2, 0.78, length((uv - vec2(0.5, 0.45)) * vec2(0.92, 1.5)));
+  density *= mix(0.4, 1.0, typeSafe);
 
   density *= vig * uIntensity;
 
   // Output is the palette colour only. The composite layer above decides how
   // dark the result is; nothing here can introduce a second hue.
-  gl_FragColor = vec4(uInk * clamp(density, 0.0, 1.0), clamp(density, 0.0, 1.0));
+  /*
+     Icy grading, from the palette only.
+
+     Ridges (high relief) burn to fusion — pale and cold, almost white.
+     Troughs take ice, a deeper blue, which is what makes the surface read as
+     frozen water rather than as grey smoke. The mix is keyed to the field, so
+     the colour itself flows and warps along with the contours instead of being
+     a flat wash behind them.
+  */
+  float icy = clamp(relief * 0.5 + 0.5, 0.0, 1.0);
+  vec3 tint = mix(uIce, uInk, smoothstep(0.25, 0.85, icy));
+
+  // Push the whole thing brighter: what was unreadable has to be seen.
+  float a = clamp(density * 1.75, 0.0, 1.0);
+  gl_FragColor = vec4(tint * a, a);
 }
 `;
 
@@ -222,8 +237,13 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
   return sh;
 }
 
-/** Palette. Only these two hues exist anywhere in the artwork. */
+/**
+ * Palette. Three values, all of them already in the brand: blacktop, fusion,
+ * and an ice blue that is fusion pushed colder. Nothing else may appear in the
+ * shader.
+ */
 const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
+const ICE: [number, number, number] = [0x6f / 255, 0xb8 / 255, 0xd8 / 255];
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
@@ -276,12 +296,14 @@ export function FluidShader({ className = "" }: { className?: string }) {
     const uMPos = gl.getUniformLocation(prog, "uMPos");
     const uMelt = gl.getUniformLocation(prog, "uMelt");
     const uInk = gl.getUniformLocation(prog, "uInk");
+    const uIce = gl.getUniformLocation(prog, "uIce");
     const uContour = gl.getUniformLocation(prog, "uContour");
     const uIntensity = gl.getUniformLocation(prog, "uIntensity");
 
     gl.uniform3f(uInk, ...FUSION);
+    gl.uniform3f(uIce, ...ICE);
     gl.uniform1f(uContour, 8.5);
-    gl.uniform1f(uIntensity, 1.35);
+    gl.uniform1f(uIntensity, 2.1);
     gl.uniform2f(uPointer, 0.5, 0.5);
     gl.uniform2f(uMPos, 0.5, 0.5);
     gl.uniform1f(uMelt, 0);

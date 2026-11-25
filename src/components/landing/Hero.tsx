@@ -76,8 +76,8 @@ export function Hero() {
         }}
       />
 
-      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(10,10,10,0.86)_0%,rgba(10,10,10,0.42)_30%,rgba(10,10,10,0.5)_58%,rgba(10,10,10,0.9)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-[4] h-72 bg-gradient-to-b from-transparent via-black/60 to-black" />
+      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(10,10,10,0.72)_0%,rgba(10,10,10,0.3)_26%,rgba(10,10,10,0.34)_56%,rgba(10,10,10,0.82)_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-[4] h-72 bg-gradient-to-b from-transparent via-black/55 to-black" />
 
       {/* 5 — type */}
       <div className="relative flex w-full max-w-7xl flex-col items-center">
