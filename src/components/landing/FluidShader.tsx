@@ -264,7 +264,7 @@ const ICE_DEEP: [number, number, number] = [0x3d / 255, 0x8f / 255, 0xc9 / 255];
  * Below 1 the motion is languid. It should read as something drifting, not as
  * something playing.
  */
-const SPEED = 0.32;
+const SPEED = 0.192; // 40% slower than the previous 0.32
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
