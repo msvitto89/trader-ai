@@ -45,7 +45,8 @@ uniform vec2  uPointer;   // 0..1, smoothed
 uniform vec2  uMPos;      // melt centre, 0..1
 uniform float uMelt;      // 0..1, decays after a click
 uniform vec3  uInk;       // fusion: the icy white-blue
-uniform vec3  uIce;       // ice: the colder cyan-blue that tints the troughs
+uniform vec3  uIce;       // icy sky blue
+uniform vec3  uIceDeep;   // deeper ice, for the troughs
 uniform float uContour;   // band density
 uniform float uIntensity; // overall presence
 
@@ -214,7 +215,10 @@ void main() {
      a flat wash behind them.
   */
   float icy = clamp(relief * 0.5 + 0.5, 0.0, 1.0);
-  vec3 tint = mix(uIce, uInk, smoothstep(0.25, 0.85, icy));
+  // Deep ice -> icy sky blue -> fusion. Blue owns the midtones, which is what
+  // makes the field read as sky-coloured rather than as grey.
+  vec3 tint = mix(uIceDeep, uIce, smoothstep(0.05, 0.55, icy));
+  tint = mix(tint, uInk, smoothstep(0.6, 0.95, icy));
 
   // Push the whole thing brighter: what was unreadable has to be seen.
   float a = clamp(density * 1.75, 0.0, 1.0);
@@ -243,7 +247,8 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
  * shader.
  */
 const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
-const ICE: [number, number, number] = [0x6f / 255, 0xb8 / 255, 0xd8 / 255];
+const ICE: [number, number, number] = [0x7c / 255, 0xd4 / 255, 0xf5 / 255];
+const ICE_DEEP: [number, number, number] = [0x2f / 255, 0x7f / 255, 0xb8 / 255];
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
@@ -297,11 +302,13 @@ export function FluidShader({ className = "" }: { className?: string }) {
     const uMelt = gl.getUniformLocation(prog, "uMelt");
     const uInk = gl.getUniformLocation(prog, "uInk");
     const uIce = gl.getUniformLocation(prog, "uIce");
+    const uIceDeep = gl.getUniformLocation(prog, "uIceDeep");
     const uContour = gl.getUniformLocation(prog, "uContour");
     const uIntensity = gl.getUniformLocation(prog, "uIntensity");
 
     gl.uniform3f(uInk, ...FUSION);
     gl.uniform3f(uIce, ...ICE);
+    gl.uniform3f(uIceDeep, ...ICE_DEEP);
     gl.uniform1f(uContour, 8.5);
     gl.uniform1f(uIntensity, 2.1);
     gl.uniform2f(uPointer, 0.5, 0.5);
