@@ -56,7 +56,7 @@ export function Hero() {
       className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
     >
       {/* 0 — fluid distortion field: the surface the candles sit on */}
-      <FluidShader className="pointer-events-none absolute inset-0 -z-30 h-full w-full" />
+      <FluidShader className="pointer-events-none absolute inset-0 -z-30 h-full w-full opacity-40" />
 
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div

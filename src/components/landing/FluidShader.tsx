@@ -201,6 +201,12 @@ void main() {
   float typeSafe = smoothstep(0.2, 0.78, length((uv - vec2(0.5, 0.45)) * vec2(0.92, 1.5)));
   density *= mix(0.4, 1.0, typeSafe);
 
+  // The candles own the lower half of the hero. The field fades out before it
+  // reaches them, so the chart always reads against a calm ground. gl_FragCoord
+  // y is bottom-up, so a high uv.y is the top of the section.
+  float aboveCandles = smoothstep(0.30, 0.70, uv.y);
+  density *= mix(0.06, 1.0, aboveCandles);
+
   density *= vig * uIntensity;
 
   // Output is the palette colour only. The composite layer above decides how
@@ -221,7 +227,7 @@ void main() {
   tint = mix(tint, uInk, smoothstep(0.75, 1.0, icy));
 
   // Push the whole thing brighter: what was unreadable has to be seen.
-  float a = clamp(density * 2.6, 0.0, 1.0);
+  float a = clamp(density * 1.5, 0.0, 1.0);
   gl_FragColor = vec4(tint * a, a);
 }
 `;
@@ -247,8 +253,8 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
  * shader.
  */
 const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
-const ICE: [number, number, number] = [0x5c / 255, 0xc8 / 255, 0xf5 / 255];
-const ICE_DEEP: [number, number, number] = [0x1c / 255, 0x6d / 255, 0xb0 / 255];
+const ICE: [number, number, number] = [0x8d / 255, 0xdc / 255, 0xf7 / 255];
+const ICE_DEEP: [number, number, number] = [0x3d / 255, 0x8f / 255, 0xc9 / 255];
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
@@ -315,7 +321,7 @@ export function FluidShader({ className = "" }: { className?: string }) {
     gl.uniform3f(uIce, ...ICE);
     gl.uniform3f(uIceDeep, ...ICE_DEEP);
     gl.uniform1f(uContour, 8.5);
-    gl.uniform1f(uIntensity, 2.8);
+    gl.uniform1f(uIntensity, 1.6);
     gl.uniform2f(uPointer, 0.5, 0.5);
     gl.uniform2f(uMPos, 0.5, 0.5);
     gl.uniform1f(uMelt, 0);
