@@ -42,6 +42,8 @@ precision highp float;
 uniform vec2  uRes;
 uniform float uTime;
 uniform vec2  uPointer;   // 0..1, smoothed
+uniform vec2  uMPos;      // melt centre, 0..1
+uniform float uMelt;      // 0..1, decays after a click
 uniform vec3  uInk;       // the bright palette colour
 uniform float uContour;   // band density
 uniform float uIntensity; // overall presence
@@ -116,10 +118,36 @@ void main() {
 
   float t = uTime;
 
-  // The pointer nudges the field rather than moving it: a local swell that
-  // travels outward, so the surface reacts without tracking the cursor.
-  vec2 pd = uPointer - 0.5;
-  p += pd * 0.18;
+  /*
+     Bend. The surface is pushed around the pointer, not shifted bodily: the
+     displacement falls off with distance from the cursor and is stronger
+     across the bending axis than along it, so the field visibly leans toward
+     the pointer the way a sheet held at one corner does. A global shift would
+     just scroll the artwork; this is what makes it feel touched.
+  */
+  vec2 pd = (uPointer - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+  float pdist = length(p - pd * 1.6);
+  float bendF = exp(-pdist * pdist * 1.5);
+  vec2 bendDir = normalize(pd + 1e-5);
+  p -= bendDir * bendF * 0.85;
+  // ...and squeeze across the bend axis, so contours bunch on the near side.
+  p += vec2(-bendDir.y, bendDir.x) * bendF * (sin(pdist * 9.0 - t * 2.0)) * 0.16;
+
+  /*
+     Melt. A click drops the surface's own scale toward zero near the point and
+     lets it run: the field is pulled toward the click centre and the contours
+     stretch outward, which reads as the material sagging and dripping rather
+     than as a ripple travelling across it.
+  */
+  if (uMelt > 0.001) {
+    vec2 mp = (uMPos - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+    vec2 md = p - mp * 1.6;
+    float mdist = length(md);
+    float meltF = exp(-mdist * mdist * 2.2) * uMelt;
+    // Drag toward the centre, and stretch the axis radially outward.
+    p -= normalize(md + 1e-5) * meltF * 0.55;
+    p *= 1.0 + meltF * 0.35;
+  }
 
   // Aspect-correct scale: the bands must not stretch on wide screens.
   p *= 1.5;
@@ -245,6 +273,8 @@ export function FluidShader({ className = "" }: { className?: string }) {
     const uRes = gl.getUniformLocation(prog, "uRes");
     const uTime = gl.getUniformLocation(prog, "uTime");
     const uPointer = gl.getUniformLocation(prog, "uPointer");
+    const uMPos = gl.getUniformLocation(prog, "uMPos");
+    const uMelt = gl.getUniformLocation(prog, "uMelt");
     const uInk = gl.getUniformLocation(prog, "uInk");
     const uContour = gl.getUniformLocation(prog, "uContour");
     const uIntensity = gl.getUniformLocation(prog, "uIntensity");
@@ -253,6 +283,8 @@ export function FluidShader({ className = "" }: { className?: string }) {
     gl.uniform1f(uContour, 8.5);
     gl.uniform1f(uIntensity, 1.35);
     gl.uniform2f(uPointer, 0.5, 0.5);
+    gl.uniform2f(uMPos, 0.5, 0.5);
+    gl.uniform1f(uMelt, 0);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive: the shader only ever adds light
 
@@ -280,9 +312,27 @@ export function FluidShader({ className = "" }: { className?: string }) {
     let cyp = 0.5;
     const onMove = (e: PointerEvent) => {
       tx = e.clientX / window.innerWidth;
-      ty = 1 - e.clientY / window.innerHeight;
+      ty = 1 - e.clientY / window.innerHeight; // GL y is bottom-up
     };
     window.addEventListener("pointermove", onMove, { passive: true });
+
+    /*
+       "Click to melt." The melt is bound to the hero only, so clicking a
+       button or a link inside it still does what that control says: the
+       handler bails out when the click landed on something interactive.
+    */
+    let melt = 0;
+    let meltX = 0.5;
+    let meltY = 0.5;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest("a, button, input, select, textarea, [role='button']")) return;
+      const r = canvas.getBoundingClientRect();
+      if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) return;
+      melt = 1;
+      meltX = e.clientX / window.innerWidth;
+      meltY = 1 - e.clientY / window.innerHeight;
+    };
+    window.addEventListener("pointerdown", onDown, { passive: true });
 
     // ── lifecycle: only run what is on screen ────────────────────────
     let visible = true;
@@ -316,8 +366,16 @@ export function FluidShader({ className = "" }: { className?: string }) {
       cxp += (tx - cxp) * 0.05;
       cyp += (ty - cyp) * 0.05;
 
+      // Melt decays back to nothing, so the surface always returns to itself.
+      if (melt > 0.001) {
+        melt *= 0.962;
+        if (melt < 0.001) melt = 0;
+      }
+
       gl.uniform1f(uTime, (now - start) / 1000);
       gl.uniform2f(uPointer, cxp, cyp);
+      gl.uniform2f(uMPos, meltX, meltY);
+      gl.uniform1f(uMelt, melt);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
     raf = window.requestAnimationFrame(loop);
@@ -328,6 +386,7 @@ export function FluidShader({ className = "" }: { className?: string }) {
     return () => {
       window.cancelAnimationFrame(raf);
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
       document.removeEventListener("visibilitychange", onVis);
       io.disconnect();
       ro.disconnect();
