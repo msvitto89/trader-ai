@@ -255,6 +255,16 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
 const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
 const ICE: [number, number, number] = [0x8d / 255, 0xdc / 255, 0xf7 / 255];
 const ICE_DEEP: [number, number, number] = [0x3d / 255, 0x8f / 255, 0xc9 / 255];
+
+/**
+ * How fast the field evolves. Scaling time here slows every layer together —
+ * the warps, the relief, the finer contour family — so the whole surface breathes
+ * at one rate instead of each layer needing its own multiplier retuned.
+ *
+ * Below 1 the motion is languid. It should read as something drifting, not as
+ * something playing.
+ */
+const SPEED = 0.32;
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
@@ -408,13 +418,13 @@ export function FluidShader({ className = "" }: { className?: string }) {
 
       // Melt decays back to nothing, so the surface always returns to itself.
       if (melt > 0.001) {
-        melt *= 0.962;
+        melt *= 0.978;
         if (melt < 0.001) melt = 0;
       }
 
       // Frozen time under reduced motion: the surface is there, it just does
       // not move.
-      gl.uniform1f(uTime, reduced ? 12.0 : (now - start) / 1000);
+      gl.uniform1f(uTime, reduced ? 12.0 : ((now - start) / 1000) * SPEED);
       gl.uniform2f(uPointer, cxp, cyp);
       gl.uniform2f(uMPos, meltX, meltY);
       gl.uniform1f(uMelt, melt);
