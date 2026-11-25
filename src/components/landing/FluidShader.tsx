@@ -26,7 +26,7 @@ import { useEffect, useRef } from "react";
  *
  * Cost control: the shader renders at a capped device-pixel-ratio into its own
  * canvas, pauses when the section scrolls away or the tab is hidden, and does
- * not run at all under prefers-reduced-motion.
+ * freezes into a still frame under prefers-reduced-motion rather than vanishing.
  */
 
 const VERT = `
@@ -217,11 +217,11 @@ void main() {
   float icy = clamp(relief * 0.5 + 0.5, 0.0, 1.0);
   // Deep ice -> icy sky blue -> fusion. Blue owns the midtones, which is what
   // makes the field read as sky-coloured rather than as grey.
-  vec3 tint = mix(uIceDeep, uIce, smoothstep(0.05, 0.55, icy));
-  tint = mix(tint, uInk, smoothstep(0.6, 0.95, icy));
+  vec3 tint = mix(uIceDeep, uIce, smoothstep(0.0, 0.45, icy));
+  tint = mix(tint, uInk, smoothstep(0.75, 1.0, icy));
 
   // Push the whole thing brighter: what was unreadable has to be seen.
-  float a = clamp(density * 1.75, 0.0, 1.0);
+  float a = clamp(density * 2.6, 0.0, 1.0);
   gl_FragColor = vec4(tint * a, a);
 }
 `;
@@ -247,8 +247,8 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
  * shader.
  */
 const FUSION: [number, number, number] = [0xd7 / 255, 0xef / 255, 0xff / 255];
-const ICE: [number, number, number] = [0x7c / 255, 0xd4 / 255, 0xf5 / 255];
-const ICE_DEEP: [number, number, number] = [0x2f / 255, 0x7f / 255, 0xb8 / 255];
+const ICE: [number, number, number] = [0x5c / 255, 0xc8 / 255, 0xf5 / 255];
+const ICE_DEEP: [number, number, number] = [0x1c / 255, 0x6d / 255, 0xb0 / 255];
 const BLACKTOP: [number, number, number] = [0x0a / 255, 0x0a / 255, 0x0a / 255];
 
 export function FluidShader({ className = "" }: { className?: string }) {
@@ -257,7 +257,12 @@ export function FluidShader({ className = "" }: { className?: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    /*
+       Reduced motion must not mean "no artwork". Bailing out here left the hero
+       with nothing at all — and reduce-motion is on for a lot of people. The
+       field still draws; it simply holds still.
+    */
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const gl = (canvas.getContext("webgl", {
       alpha: true,
@@ -310,7 +315,7 @@ export function FluidShader({ className = "" }: { className?: string }) {
     gl.uniform3f(uIce, ...ICE);
     gl.uniform3f(uIceDeep, ...ICE_DEEP);
     gl.uniform1f(uContour, 8.5);
-    gl.uniform1f(uIntensity, 2.1);
+    gl.uniform1f(uIntensity, 2.8);
     gl.uniform2f(uPointer, 0.5, 0.5);
     gl.uniform2f(uMPos, 0.5, 0.5);
     gl.uniform1f(uMelt, 0);
@@ -401,7 +406,9 @@ export function FluidShader({ className = "" }: { className?: string }) {
         if (melt < 0.001) melt = 0;
       }
 
-      gl.uniform1f(uTime, (now - start) / 1000);
+      // Frozen time under reduced motion: the surface is there, it just does
+      // not move.
+      gl.uniform1f(uTime, reduced ? 12.0 : (now - start) / 1000);
       gl.uniform2f(uPointer, cxp, cyp);
       gl.uniform2f(uMPos, meltX, meltY);
       gl.uniform1f(uMelt, melt);
