@@ -74,6 +74,19 @@ const DYE_DISSIPATION = 0.30;
 /** Relief used for the surface normal: higher = more violent highlights. */
 const RELIEF = 3.4;
 /**
+ * Peak rotation, in radians, that the type is twisted through at the pointer.
+ * Applied in the display pass rather than the solver: a rotation about a point
+ * is close to curl-free, so the pressure projection would flatten it.
+ */
+const TWIST = 0.17;
+/**
+ * How hard the letterforms are displaced by the fluid's own velocity. This is
+ * what fuses type and metal — the glyphs are sampled through the flow, so they
+ * shear and stretch with it instead of merely being covered by it. Kept small:
+ * the first attempt read as the word being torn apart rather than strained.
+ */
+const TEXT_WARP = 0.4;
+/**
  * Simulation rows. Sizing by the long edge gave a ~13:1 band only sixteen cells
  * tall, which read as blocks; the row count is what actually needs guaranteeing.
  */
@@ -411,6 +424,15 @@ export function Mercury() {
     let time = 0;
     let alive = true;
     let cleared = false;
+    // The headline's resting opacity, so it can be restored exactly.
+    const baseOpacity = getComputedStyle(target).opacity || "1";
+    let prevOpacity = "";
+    const opacityFor = (p: number) => {
+      // Hand over to the shader's own type exactly as it reaches full strength.
+      const t = Math.min(1, Math.max(0, (p - 0.35) / 0.4));
+      const still = 1 - t * t * (3 - 2 * t);
+      return String(Number(baseOpacity) * still);
+    };
 
     const frame = (now: number) => {
       if (!alive) return;
@@ -463,13 +485,14 @@ export function Mercury() {
       const padX = box.width * 0.06;
       const padY = box.height * 3.2;
       const nearHero =
-        pointerSeen < 1.4 &&
+        pointerSeen < 3.0 &&
         clientX > box.left - padX &&
         clientX < box.right + padX &&
         clientY > box.top - padY &&
         clientY < box.bottom + box.height * 0.9;
       const want = nearHero ? 1 : 0;
-      const rate = want > present ? 1 / 0.85 : 1 / 1.7;
+      // Arrive briskly, leave slowly enough that the mercury visibly sags back.
+      const rate = want > present ? 1 / 0.7 : 1 / 1.1;
       present += (want > present ? 1 : -1) * Math.min(Math.abs(want - present), uiDt * rate);
       present = Math.max(0, Math.min(1, present));
 
@@ -480,6 +503,17 @@ export function Mercury() {
          this the solver and its twenty-odd passes would run forever behind a
          headline nobody is pointing at.
       */
+      /*
+         While the metal is present it draws the letterforms itself, so the DOM
+         headline is faded underneath it. Two copies would otherwise show: a
+         still one and a twisted one.
+      */
+      const opacity = opacityFor(present);
+      if (prevOpacity !== opacity) {
+        target.style.opacity = opacity;
+        prevOpacity = opacity;
+      }
+
       if (present === 0) {
         if (!cleared) {
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -614,19 +648,25 @@ export function Mercury() {
       });
       swapDye();
 
-      // 7 — shade
+      /*
+         7 — shade. The velocity field is bound as well: the display pass reads
+         the type through it, so the letterforms deform with the flow.
+      */
       const disp = P.display!;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
       bindQuad(disp);
       bind(0, dye![0].tex);
       bind(1, maskTex);
-      units(disp, { uDye: 0, uMask: 1 });
+      bind(2, vel![0].tex);
+      units(disp, { uDye: 0, uMask: 1, uVelocity: 2 });
       gl.uniform2f(disp.loc("uTexel"), 1 / sim.w, 1 / sim.h);
       gl.uniform2f(disp.loc("uMaskTexel"), 1 / maskSize.w, 1 / maskSize.h);
       gl.uniform1f(disp.loc("uTime"), time);
       gl.uniform1f(disp.loc("uStrength"), present);
       gl.uniform1f(disp.loc("uRelief"), RELIEF);
+      gl.uniform1f(disp.loc("uTwist"), TWIST * present * TEXT_WARP);
+      gl.uniform2f(disp.loc("uPointer"), pointer.x, pointer.y);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.clearColor(0, 0, 0, 0);
@@ -665,6 +705,7 @@ export function Mercury() {
       host.removeEventListener("pointermove", onMove);
       host.removeEventListener("pointerleave", onLeave);
       host.removeEventListener("pointerdown", onMove);
+      target.style.opacity = "";
       teardownTargets();
       for (const p of Object.values(P)) if (p) gl.deleteProgram(p.prog);
       gl.deleteBuffer(vbo);
@@ -682,7 +723,7 @@ export function Mercury() {
          that wins over top/bottom, pinning the element to the 96px line box and
          clipping every strand the fluid tried to grow.
       */
-      style={{ top: "-52px", height: "calc(100% + 78px)" }}
+      style={{ top: "-50px", height: "calc(100% + 62px)" }}
     />
   );
 }

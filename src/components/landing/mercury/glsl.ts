@@ -299,18 +299,35 @@ void main() {
 export const DISPLAY = `
 precision highp float;
 varying vec2 vUv;
+
 uniform sampler2D uDye;
 uniform sampler2D uMask;
+uniform sampler2D uVelocity;
 uniform vec2 uTexel;      // dye texel
 uniform vec2 uMaskTexel;
 uniform float uTime;
 uniform float uStrength;
 uniform float uRelief;
+uniform float uTwist;
+uniform vec2 uPointer;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
 
 float dye(vec2 uv) { return texture2D(uDye, uv).r; }
+float maskRaw(vec2 uv) { return texture2D(uMask, uv).r; }
+float maskAt(vec2 uv) { return texture2D(uMask, uv).r; }
 
-// Small two-radius blur: just enough to hide the simulation grid without
-// turning the surface into fog.
+// Small two-radius blur: enough to hide the simulation grid without turning the
+// surface into fog.
 float smoothDye(vec2 uv) {
   vec2 r1 = uTexel * 1.3;
   vec2 r2 = uTexel * 2.6;
@@ -323,8 +340,6 @@ float smoothDye(vec2 uv) {
   s += dye(uv + vec2(r1.x, -r1.y)) + dye(uv - vec2(r1.x, -r1.y));
   return s / 14.0;
 }
-
-float maskAt(vec2 uv) { return texture2D(uMask, uv).r; }
 
 // Soft dilation of the type: the film of liquid clinging to the letterforms.
 float maskHalo(vec2 uv) {
@@ -340,17 +355,6 @@ float maskHalo(vec2 uv) {
   return s / 14.0;
 }
 
-float hash2(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-float vnoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x),
-             mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-
 vec3 palette(float t) {
   vec3 blacktop = vec3(0.039, 0.039, 0.039);
   vec3 deepIce  = vec3(0.239, 0.561, 0.788);
@@ -364,15 +368,13 @@ vec3 palette(float t) {
 
 /*
   A studio, not a gradient. Mercury is legible because of what it reflects: a
-  black floor, a hard bright horizon, a cold sky. The hard horizon line is the
-  single most important cue that this is a liquid metal surface.
+  black floor, a hard bright horizon, a cold sky.
 */
 vec3 studio(vec3 R) {
   float y = R.y;
   vec3 floorCol = vec3(0.012, 0.018, 0.028);
   vec3 sky = mix(vec3(0.050, 0.085, 0.125), palette(0.66), smoothstep(-0.05, 0.95, y));
   vec3 c = mix(floorCol, sky, smoothstep(-0.02, 0.10, y));
-  // hard horizon band, plus a softer secondary reflection higher up
   float horizon = smoothstep(0.115, 0.006, abs(y - 0.030));
   c = mix(c, palette(0.97), horizon * 0.95);
   float high = smoothstep(0.30, 0.02, abs(y - 0.50));
@@ -380,18 +382,69 @@ vec3 studio(vec3 R) {
   return c;
 }
 
+/*
+  ── the twist ────────────────────────────────────────────────────────────
+
+  Everything below reads the type at a *displaced* coordinate. The glyphs are not
+  a mask painted over a fluid; they are sampled through the liquid's own velocity
+  field, so the letterforms themselves shear, stretch and curl with the flow.
+  That is the difference between an effect sitting on the text and an effect made
+  of the text.
+
+  The displacement is layered:
+    - large-scale from the simulated velocity (the big pull toward the pointer),
+    - a rotational swirl about the pointer (the twist),
+    - a fine, high-frequency warp so the surface is never a rigid translate.
+*/
+vec2 flowWarp(vec2 uv) {
+  // The field is sampled in the dye's space; velocity is in crop units already.
+  vec2 v = texture2D(uVelocity, uv).xy;
+  return v * 0.030;
+}
+
+/*
+  Swirl about the pointer-projected point. Kept out of the solver on purpose: a
+  pure rotation is also curl-free-ish and the projection eats it, so the twist is
+  applied here where it is guaranteed to survive.
+*/
+vec2 swirl(vec2 uv, vec2 c, float amount) {
+  vec2 d = uv - c;
+  float r = length(d);
+  float falloff = exp(-r * r * 34.0);
+  float a = amount * falloff;
+  float s = sin(a);
+  float co = cos(a);
+  return vec2(d.x * co - d.y * s, d.x * s + d.y * co) + c;
+}
+
 void main() {
-  float h = smoothDye(vUv);
+  vec2 uv = vUv;
+
+  vec2 centre = uPointer;
+
+  // ── the displacement that fuses type and liquid ──
+  vec2 w = flowWarp(uv);
+  w += (vec2(vnoise(uv * vec2(7.0, 9.0) + uTime * 0.06),
+             vnoise(uv * vec2(9.0, 7.0) - uTime * 0.05)) - 0.5) * 0.0016;
+
+  // Twist the sampled coordinate about the pointer, strongest at the centre.
+  vec2 twisted = swirl(uv, centre, uTwist);
+
+  /* Mask, sampled through the warped, twisted coordinate. This is what makes the
+     letters deform: whole strokes bend toward the cursor and curl with it. */
+  float mWarp = maskRaw(twisted + w);
+
+  float h = smoothDye(uv);
 
   // Surface normal from the height field.
   vec2 e = uTexel * 1.8;
-  float hx = smoothDye(vUv + vec2(e.x, 0.0)) - smoothDye(vUv - vec2(e.x, 0.0));
-  float hy = smoothDye(vUv + vec2(0.0, e.y)) - smoothDye(vUv - vec2(0.0, e.y));
+  float hx = smoothDye(uv + vec2(e.x, 0.0)) - smoothDye(uv - vec2(e.x, 0.0));
+  float hy = smoothDye(uv + vec2(0.0, e.y)) - smoothDye(uv - vec2(0.0, e.y));
 
   // Subtle internal surface deformation, so the body is never perfectly calm.
   vec2 wob = vec2(
-    vnoise(vUv * vec2(11.0, 11.0) + vec2(uTime * 0.05, 0.0)) - 0.5,
-    vnoise(vUv * vec2(11.0, 11.0) + vec2(31.0, -uTime * 0.04)) - 0.5);
+    vnoise(uv * vec2(11.0, 11.0) + vec2(uTime * 0.05, 0.0)) - 0.5,
+    vnoise(uv * vec2(11.0, 11.0) + vec2(31.0, -uTime * 0.04)) - 0.5);
 
   vec3 N = normalize(vec3(-hx * uRelief + wob.x * 0.10,
                           -hy * uRelief + wob.y * 0.10,
@@ -400,9 +453,8 @@ void main() {
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
-  vec3 col = studio(R) * 1.55;
-  // A little emissive body so the mass reads against the black page; the
-  // highlights do the rest.
+  vec3 col = studio(R) * 1.30;
+  // A little emissive body so the mass reads against the black page.
   col += palette(0.34) * 0.30 * smoothstep(0.10, 0.75, h);
 
   // Two tight speculars: the hard white glints that make it wet.
@@ -419,25 +471,44 @@ void main() {
   col += palette(0.70) * fres * 0.85;
 
   /*
-     The headline stays readable. Under the pool the liquid is lifted into the
-     horizon band — so the letters read as polished chrome catching the sky —
-     rather than being painted over with flat white.
+     Fusion. The metal is poured INTO the type: the displaced glyph is shaded as
+     polished chrome (not white paint), over the pool's own surface. Because the
+     mask is read through the warp, the chrome that reappears is the *distorted*
+     letterform — one body of liquid metal that happens to hold the shape of the
+     words.
   */
-  float m = maskAt(vUv);
-  vec3 chromeType = mix(palette(0.86), vec3(0.97, 0.99, 1.0), 0.55) + studio(R) * 0.18;
-  col = mix(col, chromeType, m * 0.55);
+  /*
+     Chrome, not white paint. Polished metal is mostly DARK with a few very
+     bright bands — a flat bright fill made the letters dissolve into the pool
+     behind them. The tight horizon reflection is what keeps the letterform
+     readable while still looking like the same liquid as everything else.
+  */
+  float bandT = clamp(R.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 chromeType = mix(vec3(0.055, 0.075, 0.100), palette(0.72),
+                        smoothstep(0.50, 0.86, bandT));
+  chromeType = mix(chromeType, vec3(0.97, 0.99, 1.0),
+                   smoothstep(0.10, 0.02, abs(bandT - 0.62)));
+  chromeType += vec3(0.80, 0.90, 1.00) * spec * 0.22;
+  chromeType += palette(0.55) * fres * 0.30;
 
-  // Liquid film clinging to the letter edges.
-  float halo = maskHalo(vUv);
-  float rim = clamp(halo - m, 0.0, 1.0);
+  col = mix(col, chromeType, clamp(mWarp, 0.0, 1.0));
+
+  // Liquid film clinging to the letter edges, also warped with the type.
+  float halo = maskHalo(uv);
+  float rim = clamp(halo - maskAt(uv), 0.0, 1.0);
   col += vec3(0.74, 0.88, 1.00) * rim * 0.85;
 
-  // A defined body, not fog: the edge of the pool should be a surface.
-  float body = smoothstep(0.07, 0.34, h);
-  float alpha = max(body, smoothstep(0.0, 0.45, rim) * 0.85) * uStrength;
-  // Over the ink itself the film thins out, so the headline stays readable
-  // while the liquid still wraps and spills off it.
-  alpha *= mix(1.0, 0.55, m);
+  /*
+     A defined body, not fog: the edge of the pool should be a surface. Where the
+     glyph is, alpha is high so the type is genuinely coated rather than merely
+     tinted — the metal owns the letters.
+  */
+  float body = smoothstep(0.07, 0.34, h) * uStrength;
+  float rimA = smoothstep(0.0, 0.45, rim) * 0.85 * uStrength;
+  // The chrome letter arrives fast and at full opacity — the DOM headline is
+  // faded out on the same curve, so the type is never drawn twice or halved.
+  float typeA = clamp(mWarp, 0.0, 1.0) * 0.97 * smoothstep(0.0, 0.35, uStrength);
+  float alpha = max(max(body, rimA), typeA);
 
   // The pool must not end on the canvas edge, or the crop reads as a rectangle.
   alpha *= smoothstep(0.0, 0.09, vUv.x) * smoothstep(1.0, 0.91, vUv.x)
