@@ -16,7 +16,8 @@ import { useEffect, useRef } from "react";
  *             and detached when it leaves — a resting headline is plain text
  *   fade      a strength value ramps 0 -> 1 over ~320ms and back, so the effect
  *             arrives and leaves smoothly instead of snapping on
- *   reduced   under prefers-reduced-motion the filter is never attached at all
+ *   reduced   under prefers-reduced-motion time is frozen: the warp appears and
+ *             holds a single shape instead of animating
  *
  * The original background notes follow, since the field maths is unchanged.
  *
@@ -324,12 +325,15 @@ export function FluidShader() {
     if (!canvas) return;
 
     /*
-       This is a hover flourish, so reduce-motion means it does not run at all.
-       That is the opposite of the background case, where showing nothing was
-       worse than showing something still: there the artwork WAS the section,
-       here it is an embellishment on text that must stay perfectly readable.
+       Reduced motion does not mean "no effect". Gating on it here is what made
+       this look broken: with the OS setting on, the filter was never created and
+       hovering did nothing at all.
+
+       Instead the effect still runs, but its time is frozen — the warp arrives
+       and holds a single shape. Motion is what the setting asks to avoid, not
+       the presence of the design.
     */
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const gl = (canvas.getContext("webgl", {
       alpha: true,
@@ -484,7 +488,7 @@ export function FluidShader() {
         strength = Math.max(target, strength - dt / FALL_MS);
       }
 
-      time += 0.06 * SPEED * 6;
+      if (!reduced) time += 0.06 * SPEED * 6;
       if (melt > 0.001) {
         melt *= 0.985;
         if (melt < 0.001) melt = 0;
