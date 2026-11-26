@@ -1,24 +1,23 @@
 "use client";
 
 /**
- * Mercury — a GPU fluid driven by the cursor, sourced from the headline.
+ * Mercury — the headline as a body of oil.
  *
- * The type is not animated. It is a fixed shape, and its glyphs are the inflow
- * boundary of an actual stable-fluids solver running on the GPU:
+ * The text IS the oil. There is no liquid layer beside, behind or over it.
  *
- *   pointer → force field → velocity → incompressible projection → dye
+ * There is no dye field at all. A stable-fluids solver runs on the GPU purely to
+ * produce a velocity field from the cursor, and the display pass displaces the
+ * TEXT MASK through that field:
  *
- * The dye field is seeded from the letterforms and relaxed back toward them
- * every frame. So the liquid exists only as a sheet clinging to the text; the
- * cursor's attraction pumps it outward into strands, and the relaxation drags
- * it home when the cursor leaves. Nothing is ever advected away from the type
- * permanently, which is why the body stays continuous instead of breaking into
- * particles, and why the text itself never moves.
+ *   text mask → fluid velocity → displaced glyph surface → white text
  *
- * Steps per frame, all in fragment shaders on RGBA16F targets:
+ * So the material is the glyph itself: the letters stretch, compress and bend as
+ * thick oil would, stay attached as one mass, never leave their place, and never
+ * change colour — every visible pixel is #FFFFFF and only the silhouette moves.
+ *
+ * Steps per frame, all fragment shaders on RGBA16F targets:
  *   advect velocity → curl → vorticity confinement → viscous diffusion →
- *   divergence → Jacobi pressure → subtract gradient → inject forces →
- *   advect dye → inflow + spring relaxation → shade the mercury
+ *   divergence → Jacobi pressure → subtract gradient → inject forces → display
  */
 
 import { useEffect, useRef } from "react";
@@ -27,72 +26,70 @@ import {
   CURL,
   DIVERGENCE,
   DISPLAY,
-  DYE,
   FORCE,
   GRADIENT_SUBTRACT,
   PRESSURE,
+  SMOOTH,
   VERT,
   VISCOSITY,
   VORTICITY,
 } from "./mercury/glsl";
 
+
 /* ── tuning, in one place ───────────────────────────────────────────────
    Velocities are in normalised crop units per second, so the physics does not
-   change with screen size. Everything here was chosen for "thick syrup": slow,
-   heavy, and slow to let go.
+   change with screen size. Everything here is set for thick oil: heavy, slow,
+   and reluctant to let go of its own shape.
 */
-/**
- * Accel toward the pointer, in crop-widths per second squared. The first value
- * tried here (3.4) combined with the damping below gave a terminal velocity of
- * several crop widths per second: the dye left the domain in a few frames and
- * the surface never had time to look viscous.
- */
-const PULL = 1.7;
+/** Accel toward the pointer. */
+const PULL = 5.0;
 /** Falloff exponent of the attraction field; higher = tighter to the cursor. */
-const FALLOFF = 6.2;
+const FALLOFF = 3.2;
 /**
  * How much of the pointer's own motion is fed into the fluid. This is what makes
- * a fast pass drag a long trail and a direction change bend the strand.
+ * a fast pass drag the oil further and a slow one barely disturb it.
  */
-const DRAG = 0.35;
-/** Velocity is bled away where the glyphs are: the anchor. */
-const ANCHOR = 7.0;
+const DRAG = 0.55;
+/** Velocity is bled away where the glyphs are: the oil holds its place. */
+const ANCHOR = 0.9;
 /** Global viscous damping of the velocity field. */
-const DAMP = 1.0;
+const DAMP = 1.4;
 /** Vorticity confinement: keeps curls rolling instead of diffusing. */
-const VORTICITY_STRENGTH = 20;
+const VORTICITY_STRENGTH = 9;
 /** Viscous diffusion coefficient per Jacobi step. */
 const VISCOSITY_NU = 0.007;
 const VISCOSITY_STEPS = 1;
 const PRESSURE_STEPS = 18;
-/** Dye seeded from the glyphs per second. */
-const INFLOW = 6.0;
-/** Spring rate pulling the dye back onto the glyphs. */
-const RETURN = 0.42;
-/** How fast stretched mercury evaporates once unsupported. */
-const DYE_DISSIPATION = 0.55;
-/** Relief used for the surface normal: higher = more violent highlights. */
-const RELIEF = 1.7;
 /**
- * Peak rotation, in radians, that the type is twisted through at the pointer.
- * Applied in the display pass rather than the solver: a rotation about a point
- * is close to curl-free, so the pressure projection would flatten it.
+ * How far the oil is drawn along the flow, as a multiple of the fluid's own
+ * displacement. This is the effect's single strength control: the letters are
+ * stretched by exactly this much and nothing else.
  */
-const TWIST = 0.026;
+const OIL = 3.1;
 /**
- * How hard the letterforms are displaced by the fluid's own velocity. This is
- * what fuses type and metal — the glyphs are sampled through the flow, so they
- * shear and stretch with it instead of merely being covered by it. Deliberately
- * restrained: legibility of the headline outranks the strength of the effect.
+ * Hard cap on the warp, in canvas heights. This is the legibility guarantee: no
+ * pixel of a glyph may travel further than this from where the type drew it, so
+ * the letters can lean and swell but can never come apart or leave the line.
+ * 0.028 is a little over a third of the cap height of an 86px headline.
  */
-const TEXT_WARP = 0.055;
+const REACH = 0.052;
+
 /**
  * Simulation rows. Sizing by the long edge gave a ~13:1 band only sixteen cells
  * tall, which read as blocks; the row count is what actually needs guaranteeing.
  */
 const SIM_ROWS = 168;
-/** Mask texture cells across the crop's long edge. */
-const MASK_LONG = 1600;
+/**
+ * Mask cells per canvas pixel, and an absolute cap on the texture width.
+ *
+ * One cell per screen pixel is not enough: the display pass reads the mask at a
+ * shifted position, so an edge that is only one texel wide stair-steps wherever
+ * the warp is strong. Two cells per pixel leaves the bilinear filter enough room
+ * to reconstruct a clean edge after displacement. The cap is a hard texture-size
+ * bound for 4K-and-up displays.
+ */
+const MASK_OVERSAMPLE = 2;
+const MASK_MAX = 8192;
 
 const TARGET_SELECTOR = "[data-fluid-target]";
 
@@ -180,7 +177,7 @@ export function Mercury() {
       pressure: makePass(PRESSURE),
       gradient: makePass(GRADIENT_SUBTRACT),
       force: makePass(FORCE),
-      dye: makePass(DYE),
+      smooth: makePass(SMOOTH),
       display: makePass(DISPLAY),
     };
     if (Object.values(P).some((p) => !p)) return;
@@ -196,11 +193,18 @@ export function Mercury() {
     gl.disable(gl.DEPTH_TEST);
 
     /* ── render targets ─────────────────────────────────────────────── */
-    const makeBuf = (w: number, h: number): Buf => {
+    /*
+       `linear` is for buffers that are read as a FIELD rather than as data. The
+       solver's own passes hand-roll bilinear sampling and must see raw texels,
+       but the warp field is read by the display at screen resolution: with NEAREST
+       its ~11px cells show up as vertical striping across every stem.
+    */
+    const makeBuf = (w: number, h: number, linear = false): Buf => {
       const tex = gl.createTexture()!;
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const filter = linear ? gl.LINEAR : gl.NEAREST;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
@@ -227,22 +231,23 @@ export function Mercury() {
 
     let sim: { w: number; h: number } = { w: 1, h: 1 };
     let vel: [Buf, Buf] | null = null;
-    let dye: [Buf, Buf] | null = null;
     let pressure: [Buf, Buf] | null = null;
     let divergence: Buf | null = null;
     let curl: Buf | null = null;
+    let warpField: [Buf, Buf] | null = null;
     let maskTex: WebGLTexture | null = null;
     let maskSize = { w: 1, h: 1 };
 
     const teardownTargets = () => {
       vel?.forEach(dispose);
-      dye?.forEach(dispose);
       pressure?.forEach(dispose);
       dispose(divergence);
       dispose(curl);
+      warpField?.forEach(dispose);
       if (maskTex) gl.deleteTexture(maskTex);
-      vel = dye = pressure = null;
+      vel = pressure = null;
       divergence = curl = null;
+      warpField = null;
       maskTex = null;
     };
 
@@ -256,8 +261,8 @@ export function Mercury() {
       const ch = canvas.clientHeight;
       if (!cw || !ch) return;
 
-      const long = MASK_LONG;
-      const scale = long / Math.max(cw, ch);
+      const want = (canvas.width / Math.max(cw, 1)) * MASK_OVERSAMPLE;
+      const scale = Math.min(want, MASK_MAX / Math.max(cw, ch));
       maskSize = {
         w: Math.max(8, Math.round(cw * scale)),
         h: Math.max(8, Math.round(ch * scale)),
@@ -274,18 +279,60 @@ export function Mercury() {
 
       const cs = getComputedStyle(target);
       maskCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-      maskCtx.textAlign = "center";
-      maskCtx.textBaseline = "middle";
+      /*
+         Anchored on the DOM's own baseline, left-aligned at each glyph's own left
+         edge — NOT centred on the element box.
+
+         `textBaseline = "middle"` centres the FONT's ascent/descent (ascent 79,
+         descent 21 for an 86px line of 87.72px), which is not where CSS put the
+         line box: the real baseline sits 72px below the box top. So the copied
+         type landed 6px high and 1.5px left, and because the canvas only takes
+         over once `present` ramps up, that error showed up as the headline
+         jumping upward a moment after load.
+      */
+      maskCtx.textAlign = "left";
+      maskCtx.textBaseline = "alphabetic";
       maskCtx.fillStyle = "#fff";
       maskCtx.scale(k, k);
 
-      for (const el of target.querySelectorAll<HTMLElement>("[data-letter]")) {
+      const letters = Array.from(
+        target.querySelectorAll<HTMLElement>("[data-letter]"),
+      );
+      /*
+         One probe per line box, not per glyph: an inline-block zero-sized span
+         sits on the text baseline, so its bottom edge IS the baseline. Measured
+         from the first glyph of each distinct `top`, because letters on the same
+         line share a baseline and the italic serif line does not.
+      */
+      const baselines = new Map<number, number>();
+      for (const el of letters) {
         const r = el.getBoundingClientRect();
         if (!r.width || !r.height) continue;
+        const lineKey = Math.round(r.top * 2);
+        if (!baselines.has(lineKey)) {
+          const probe = document.createElement("span");
+          probe.style.cssText =
+            "display:inline-block;width:0;height:0;padding:0;margin:0;border:0";
+          el.appendChild(probe);
+          const pr = probe.getBoundingClientRect();
+          probe.remove();
+          /*
+             `getBoundingClientRect` invalidates layout, so re-read nothing here:
+             the probe is removed before any geometry below is used, and the rect
+             captured above is still valid because the probe is out of flow.
+          */
+          baselines.set(lineKey, pr.bottom);
+        }
+      }
+
+      for (const el of letters) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        const baseline = baselines.get(Math.round(r.top * 2)) ?? r.bottom;
         maskCtx.fillText(
           el.textContent ?? "",
-          r.left + r.width / 2 - base.left,
-          r.top + r.height / 2 - base.top,
+          r.left - base.left,
+          baseline - base.top,
         );
       }
       maskCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -335,10 +382,10 @@ export function Mercury() {
       sim = { w, h };
       teardownTargets();
       vel = [makeBuf(w, h), makeBuf(w, h)];
-      dye = [makeBuf(w, h), makeBuf(w, h)];
       pressure = [makeBuf(w, h), makeBuf(w, h)];
       divergence = makeBuf(w, h);
       curl = makeBuf(w, h);
+      warpField = [makeBuf(w, h, true), makeBuf(w, h, true)];
       uploadMask();
     };
 
@@ -357,8 +404,15 @@ export function Mercury() {
     const pointer = { x: 0.5, y: 0.5 };
     const pointerVel = { x: 0, y: 0 };
     let pointerTarget = { x: 0.5, y: 0.5 };
-    let pointerSeen = 0; // seconds since the pointer last moved
+    /*
+       Starts "long ago", not at zero. At zero the drive gate opens on the very
+       first frame and a phantom cursor sits at the centre of the canvas, pulling
+       the fluid with a force the user never asked for — the letters then never
+       stop moving. The effect must begin in the untouched state.
+    */
+    let pointerSeen = 99; // seconds since the pointer last moved
     let present = 0; // 0..1 — ramps the whole effect, so it never snaps
+    let gate = 0; // 0..1 — how hard the cursor is currently driving the fluid
 
     const toUv = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -375,9 +429,9 @@ export function Mercury() {
     const onLeave = () => {
       pointerSeen = 99;
     };
-    host.addEventListener("pointermove", onMove, { passive: true });
-    host.addEventListener("pointerleave", onLeave);
-    host.addEventListener("pointerdown", onMove, { passive: true });
+    target.addEventListener("pointermove", onMove, { passive: true });
+    target.addEventListener("pointerleave", onLeave);
+    target.addEventListener("pointerdown", onMove, { passive: true });
 
     /* ── passes ─────────────────────────────────────────────────────── */
     const bindQuad = (pass: Pass) => {
@@ -423,13 +477,73 @@ export function Mercury() {
     // The headline's resting opacity, so it can be restored exactly.
     const baseOpacity = getComputedStyle(target).opacity || "1";
     let prevOpacity = "";
+
     /*
-       The shader draws the type, so the DOM headline is hidden outright. It has
-       to stay in the document — it is what the glyph mask is measured from —
-       but showing it too would stack a still copy under a strained one.
+       ── the handoff gate ──────────────────────────────────────────────
+       The kinetic entrance animates every glyph with a transform, and the vector
+       mask is a rasterisation of where those glyphs are AT THE MOMENT it is
+       painted. Taking the surface over before the animation has landed therefore
+       does three things wrong at once: the mask records letters mid-flight, the
+       DOM copy fades out first, and for a few hundred milliseconds after a reload
+       the headline is simply missing.
+
+       So the crossfade waits for the type to stop moving. "Stopped" is measured,
+       not assumed: the glyph rects are sampled on a timer, and the handoff opens
+       once two consecutive samples agree. When it opens, the mask is repainted
+       from the settled geometry, so the canvas copy is aligned with the DOM copy
+       it replaces and the crossfade is invisible.
     */
-    const opacityFor = (p: number) =>
-      String(Number(baseOpacity) * Math.min(1, Math.max(0, 1 - p * 1.6)));
+    let settled = false;
+    const letterSig = () => {
+      let sig = "";
+      for (const el of target.querySelectorAll<HTMLElement>("[data-letter]")) {
+        const r = el.getBoundingClientRect();
+        sig += `${r.left.toFixed(2)},${r.top.toFixed(2)};`;
+      }
+      return sig;
+    };
+    const probeSettle = () => {
+      if (settled) return;
+      const sig = letterSig();
+      if (sig === lastSig) {
+        settled = true;
+        clearInterval(settleTimer);
+        // Geometry is final now: re-rasterise so the copy is pixel-aligned.
+        uploadMask();
+      } else {
+        lastSig = sig;
+      }
+    };
+    let lastSig = letterSig();
+    const settleTimer = window.setInterval(probeSettle, 140);
+    /*
+       Hard stop. The observer above only decides WHEN to hand over; it must never
+       be the reason the effect fails to appear, so after a few seconds the
+       handoff opens regardless of what the sampler saw.
+    */
+    const settleDeadline = window.setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        clearInterval(settleTimer);
+        uploadMask();
+      }
+    }, 4000);
+    /*
+       The shader draws the type once it has fully taken over, so the DOM headline
+       is hidden then. It has to stay in the document — it is what the glyph mask
+       is measured from — but showing it too would stack a still copy under a
+       strained one.
+
+       The fade is held back until the canvas is essentially at full strength, and
+       only then runs quickly. Fading the DOM copy out at the same rate the canvas
+       fades in produces a visible dip: for a few frames neither copy is fully
+       opaque, which reads as the headline blinking as it swaps. Because the two
+       copies are pixel-aligned at rest, letting them overlap is invisible.
+    */
+    const opacityFor = (p: number) => {
+      const t = Math.min(1, Math.max(0, (p - 0.88) / 0.12));
+      return String(Number(baseOpacity) * (1 - t));
+    };
 
     const frame = (now: number) => {
       if (!alive) return;
@@ -460,13 +574,7 @@ export function Mercury() {
       pointer.x += (pointerTarget.x - pointer.x) * ease;
       pointer.y += (pointerTarget.y - pointer.y) * ease;
 
-      const idle = pointerSeen > 0.12;
-      /*
-         Settle: 0 while the pointer is engaged, ramping to 1 a moment after it
-         leaves. Drives both the dye's return spring and the inflow, so the
-         mercury withdraws instead of hovering.
-      */
-      const settle = Math.min(1, Math.max(0, (pointerSeen - 0.35) / 0.45));
+      const idle = pointerSeen > 0.4;
       const vx = idle ? 0 : (pointer.x - prevX) / Math.max(uiDt, 1e-3);
       const vy = idle ? 0 : (pointer.y - prevY) / Math.max(uiDt, 1e-3);
       // Smooth the drag, so one jittery frame cannot yank the fluid.
@@ -479,10 +587,29 @@ export function Mercury() {
          the pointer only adds strain. `present` is kept as the single fade
          channel so the arrival is still soft rather than a snap.
       */
-      present += (1 - present) * Math.min(1, uiDt * 2.2);
+      /*
+         Drive, not a fade. The force is only injected while the cursor is
+         actually moving; once it stops, `gate` eases to zero and the velocity
+         field is left to itself — advected, anchored inside the glyphs and
+         damped. That decay IS the gather: the oil creeps back into the
+         letterform and the dead zone in the display pass then returns the type
+         to perfectly clean, not to a faint permanent wobble.
+      */
+      /*
+         0.4s, not something tighter: `pointerSeen` is advanced by the wall clock
+         once per frame, so on a slow GPU a single frame can add more than a
+         hundred milliseconds and a tight window would close between two moves.
+         Four hundred milliseconds reads as "still moving" to a person and is
+         comfortably longer than a frame on any hardware.
+      */
+      const want = pointerSeen < 0.4 ? 1 : 0;
+      gate += (want - gate) * Math.min(1, uiDt * (want > gate ? 10 : 1.6));
+
+      // ── the canvas only takes over once the entrance has landed ────
+      if (settled) present += (1 - present) * Math.min(1, uiDt * 3.0);
       if (present > 0.999) present = 1;
 
-      if (!vel || !dye || !pressure || !divergence || !curl || !maskTex) return;
+      if (!vel || !pressure || !divergence || !curl || !warpField || !maskTex) return;
 
       /*
          Dormant pool: no fluid work at all. The sim is continuous, so without
@@ -521,7 +648,6 @@ export function Mercury() {
       const divP = P.divergence!;
       const presP = P.pressure!;
       const gradP = P.gradient!;
-      const dyeP = P.dye!;
 
       // 1 — advect velocity by itself
       run(vel[1], advect, () => {
@@ -530,7 +656,7 @@ export function Mercury() {
         units(advect, { uVelocity: 0, uSource: 1 });
         gl.uniform2f(advect.loc("uTexel"), 1 / sim.w, 1 / sim.h);
         gl.uniform1f(advect.loc("uDt"), dt);
-        gl.uniform1f(advect.loc("uDissipation"), 0.12);
+        gl.uniform1f(advect.loc("uDissipation"), 0.28);
       });
       swap();
 
@@ -546,7 +672,13 @@ export function Mercury() {
         units(vort, { uVelocity: 0, uCurl: 1 });
         gl.uniform2f(vort.loc("uTexel"), 1 / sim.w, 1 / sim.h);
         gl.uniform1f(vort.loc("uDt"), dt);
-        gl.uniform1f(vort.loc("uStrength"), VORTICITY_STRENGTH);
+        /*
+           Gated on `gate`, not just damped. Confinement renormalises the curl,
+           so it happily takes a residual of 1e-9 and pumps it back up into a
+           visible swirl: an ungated solver never actually stops. Scaling it
+           with the drive lets the field decay all the way to zero.
+        */
+        gl.uniform1f(vort.loc("uStrength"), VORTICITY_STRENGTH * gate);
       });
       swap();
 
@@ -606,60 +738,53 @@ export function Mercury() {
         gl.uniform1f(force.loc("uAspect"), aspect);
         gl.uniform2f(force.loc("uPointer"), pointer.x, pointer.y);
         gl.uniform2f(force.loc("uPointerVel"), pointerVel.x * DRAG, pointerVel.y * DRAG);
-        gl.uniform1f(force.loc("uPull"), PULL * present);
+        gl.uniform1f(force.loc("uPull"), PULL * present * gate);
         gl.uniform1f(force.loc("uFalloff"), FALLOFF);
         gl.uniform1f(force.loc("uAnchor"), ANCHOR);
         gl.uniform1f(force.loc("uDamp"), DAMP);
       });
       swap();
 
-      // 6 — advect the mercury, then refill from the type
-      run(dye[1], advect, () => {
-        bind(0, vel![0].tex);
-        bind(1, dye![0].tex);
-        units(advect, { uVelocity: 0, uSource: 1 });
-        gl.uniform2f(advect.loc("uTexel"), 1 / sim.w, 1 / sim.h);
-        gl.uniform1f(advect.loc("uDt"), dt);
-        gl.uniform1f(advect.loc("uDissipation"), 0.12);
-      });
-      swapDye();
-      run(dye[1], dyeP, () => {
-        bind(0, dye![0].tex);
-        bind(1, maskTex);
-        units(dyeP, { uDye: 0, uMask: 1 });
-        gl.uniform1f(dyeP.loc("uDt"), dt);
-        gl.uniform1f(dyeP.loc("uInflow"), INFLOW * (1 - settle));
-        /*
-           Relaxation. While the pointer is anywhere near the hero the dye is
-           held in its deformed state; once it has been gone a moment the spring
-           tightens hard and the liquid recedes back onto the letterforms. Without
-           this the pool stayed half-formed forever, because `present` is always
-           1 and the old collapse term was multiplied by zero.
-        */
-        gl.uniform1f(dyeP.loc("uReturn"), RETURN + settle * 9.0);
-        gl.uniform1f(dyeP.loc("uDissip"), DYE_DISSIPATION);
-      });
-      swapDye();
+      /*
+         6 — the warp field. Two wide blurs of the velocity, at a bigger radius
+         the second time. This is not physics: it exists so the text is bent by a
+         low-frequency field rather than chewed by the solver's own small curls.
+      */
+      const smoothP = P.smooth!;
+      let src = vel[0];
+      for (let i = 0; i < 2; i++) {
+        const dst = warpField[i % 2];
+        run(dst, smoothP, () => {
+          bind(0, src.tex);
+          units(smoothP, { uSource: 0 });
+          gl.uniform2f(smoothP.loc("uTexel"), 1 / sim.w, 1 / sim.h);
+          gl.uniform1f(smoothP.loc("uRadius"), i === 0 ? 1.7 : 2.6);
+        });
+        src = dst;
+      }
 
       /*
-         7 — shade. The velocity field is bound as well: the display pass reads
-         the type through it, so the letterforms deform with the flow.
+         7 — display. Only the mask and the warp field are bound: the text is
+         displaced by the flow and drawn as white. Nothing else exists.
       */
       const disp = P.display!;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
       bindQuad(disp);
-      bind(0, dye![0].tex);
-      bind(1, maskTex);
-      bind(2, vel![0].tex);
-      units(disp, { uDye: 0, uMask: 1, uVelocity: 2 });
-      gl.uniform2f(disp.loc("uTexel"), 1 / sim.w, 1 / sim.h);
-      gl.uniform2f(disp.loc("uMaskTexel"), 1 / maskSize.w, 1 / maskSize.h);
-      gl.uniform1f(disp.loc("uTime"), time);
+      bind(0, maskTex);
+      bind(1, src.tex);
+      units(disp, { uMask: 0, uVelocity: 1 });
+      gl.uniform2f(disp.loc("uVelTexel"), 1 / sim.w, 1 / sim.h);
+      /*
+         `uStrength` is presence only — whether the canvas is drawing at all. The
+         deformation is not gated here: it comes entirely from the velocity field,
+         which decays on its own when the cursor stops, so the type gathers back
+         under inertia instead of fading.
+      */
       gl.uniform1f(disp.loc("uStrength"), present);
-      gl.uniform1f(disp.loc("uRelief"), RELIEF);
-      gl.uniform1f(disp.loc("uTwist"), TWIST * present * TEXT_WARP);
-      gl.uniform2f(disp.loc("uPointer"), pointer.x, pointer.y);
+      gl.uniform1f(disp.loc("uOil"), OIL);
+      gl.uniform1f(disp.loc("uReach"), REACH);
+      gl.uniform1f(disp.loc("uAspect"), canvas.width / Math.max(canvas.height, 1));
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.clearColor(0, 0, 0, 0);
@@ -680,12 +805,6 @@ export function Mercury() {
       pressure[0] = pressure[1];
       pressure[1] = t;
     };
-    const swapDye = () => {
-      if (!dye) return;
-      const t = dye[0];
-      dye[0] = dye[1];
-      dye[1] = t;
-    };
 
     // Kick the pool so it is already liquid when the pointer arrives.
     raf = window.requestAnimationFrame(frame);
@@ -693,11 +812,13 @@ export function Mercury() {
     return () => {
       alive = false;
       window.cancelAnimationFrame(raf);
+      clearInterval(settleTimer);
+      clearTimeout(settleDeadline);
       ro.disconnect();
       window.removeEventListener("resize", resize);
-      host.removeEventListener("pointermove", onMove);
-      host.removeEventListener("pointerleave", onLeave);
-      host.removeEventListener("pointerdown", onMove);
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerleave", onLeave);
+      target.removeEventListener("pointerdown", onMove);
       target.style.opacity = "";
       teardownTargets();
       for (const p of Object.values(P)) if (p) gl.deleteProgram(p.prog);

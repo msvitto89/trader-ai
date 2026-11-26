@@ -2,11 +2,10 @@
  * Mercury — GLSL sources.
  *
  * A GPU stable-fluids solver (advection → vorticity confinement → viscosity →
- * divergence → pressure → gradient subtract) with the headline type texture as
- * its source. The dye field is what stretches off the letters toward the
- * pointer; it is repeatedly relaxed back toward the glyph mask, so the liquid
- * is always one connected body that returns to the text instead of drifting
- * away or breaking into particles.
+ * divergence → pressure → gradient subtract) whose only job is a velocity field.
+ * There is no dye and no liquid layer: DISPLAY uses that field to displace the
+ * headline's own glyph mask, so the type itself is the material that stretches
+ * and gathers back. See DISPLAY for the whole model.
  *
  * Written against GLSL ES 1.00 so the same sources run on the WebGL2 context
  * (which accepts #version 100) and on a WebGL1 fallback.
@@ -151,14 +150,23 @@ vec2 curlNoise(vec2 p) {
 `;
 
 /**
- * The force field. Three contributions:
- *   1. attraction to the pointer, strongest at the pointer and falling off
- *      smoothly with distance — the positive charge pulling the mercury;
- *   2. the pointer's own velocity, so a fast pass drags a long trail and a
- *      change of direction bends the strand around the new heading;
- *   3. a slow noise churn, so the pool is never perfectly still.
- * The glyphs themselves anchor the body: velocity is bled away where the mask
- * is present, which is what stops the source from being dragged off the type.
+ * The force field — paint being pushed by something moving through it.
+ *
+ * The important decision here is what is NOT in this field. There is no radial
+ * attraction toward the cursor. A pull-into-a-point is exactly the "magnet"
+ * reading the design rejects: the letters get sucked into a funnel around the
+ * pointer, thin out where they bunch, and overlap each other. Oil does not do
+ * that — it is displaced *along* the direction of the thing moving through it.
+ *
+ * So the field is directional:
+ *   1. a wide, soft drag along the pointer's own velocity (short gesture = a
+ *      slight lean; fast gesture = a long drawn-out stretch);
+ *   2. a small curl around that direction, so the displacement bends instead of
+ *      translating rigidly;
+ *   3. a little swirl in the glyphs themselves, which is what makes the material
+ *      look thick rather than like a sliding sheet.
+ * Everything is weighted by distance to the cursor and by the drive gate, so
+ * nothing moves at all when the cursor is still.
  */
 export const FORCE = `
 precision highp float;
@@ -180,42 +188,73 @@ void main() {
   vec2 vel = texture2D(uVelocity, vUv).xy;
 
   vec2 d = (vUv - uPointer) * vec2(uAspect, 1.0);
-  float dist = length(d);
-  float fall = exp(-dist * dist * uFalloff);
+  float fall = exp(-dot(d, d) * uFalloff);
 
-  // 1 — pull toward the pointer
-  vec2 toward = normalize((uPointer - vUv) * vec2(uAspect, 1.0) + 1e-5);
-  vel += toward * fall * uPull * uDt;
-
-  // 2 — the pointer's motion drags fluid with it (trails, bends)
-  vel += uPointerVel * fall * 0.55 * uDt;
-  // ...and swirls a little around the direction of travel, which is what makes
-  // a fast pass curl instead of translating the liquid rigidly.
-  vel += vec2(-uPointerVel.y, uPointerVel.x) * fall * 0.22 * uDt;
+  // 1 — drag along the pointer's motion. This is the whole gesture.
+  vec2 dir = uPointerVel * vec2(uAspect, 1.0);
+  vel += dir * fall * uPull * uDt;
 
   /*
-     3 — shear. A smooth radial pull only translates the dye. What reads as
-     mercury is the liquid being dragged at different speeds at neighbouring
-     points, so this adds curl noise that is strongest where the pull is
-     strongest: the strands stay anchored at the type and stream toward the
-     cursor, rather than sliding there as a lump.
+     2 — curl around the direction of travel. Divergence-free by construction, so
+     the pressure solve does not immediately flatten it, and it is what makes the
+     stretch curve rather than slide.
   */
-  vec2 sp = vUv * vec2(6.5 * uAspect, 6.5) + vec2(uTime * 0.05, -uTime * 0.04);
-  vec2 shear = curlNoise(sp) + 0.5 * curlNoise(sp * 2.1 - vec2(uTime * 0.03));
-  vel += shear * (0.18 + fall * uPull * 1.2) * uDt;
+  vec2 side = vec2(-dir.y, dir.x);
+  vel += side * fall * 0.30 * uDt;
 
-  // 4 — ambient churn, always present so the pool is never dead
-  vec2 churn = noiseGrad(vUv * vec2(3.0 * uAspect, 3.0) + vec2(uTime * 0.05, -uTime * 0.04));
-  vel += churn * 0.12 * uDt;
+  /*
+     3 — a slow swirl where the oil actually is. Gated on the falloff, so it
+     exists only in the neighbourhood of the gesture and dies with it; the text is
+     the displaced medium now, and any field that survives forever is a permanent
+     deformation of the letters.
+  */
+  vec2 sp = vUv * vec2(5.5 * uAspect, 5.5) + vec2(uTime * 0.06, -uTime * 0.05);
+  vec2 swirl = curlNoise(sp);
+  vel += swirl * fall * uPull * 0.22 * uDt;
 
-  // Anchor: the pool is pinned to the type, so velocity dies where the ink is.
+  /*
+     A light viscosity inside the glyphs, NOT a wall. It was 7.0 when the dye was a
+     separate pool being pinned in place; applied to the text itself that much
+     cancelled the force entirely. Small, it is what keeps the oil heavy.
+  */
   float m = texture2D(uMask, vUv).r;
   vel *= 1.0 - m * uAnchor * uDt;
 
-  // Global damping keeps the whole body viscous and bounded.
+  // Global damping keeps the whole field viscous and bounded.
   vel *= 1.0 - uDamp * uDt;
 
   gl_FragColor = vec4(vel, 0.0, 1.0);
+}
+`;
+
+/**
+ * Wide smoothing of the velocity, used only as the DISPLACEMENT field.
+ *
+ * The solver's velocity is deliberately full of small curls — that is what makes
+ * it feel like a fluid. Used raw as a warp it is too high-frequency: the text
+ * edge gets eaten into grain instead of bending. This pass averages the field
+ * over a wide stencil so the displacement varies smoothly across the whole
+ * letterform, which is the difference between "oil is being drawn out here" and
+ * "this pixel has noise on it".
+ */
+export const SMOOTH = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uSource;
+uniform vec2 uTexel;
+uniform float uRadius;
+void main() {
+  vec2 r = uTexel * uRadius;
+  vec2 sum = vec2(0.0);
+  float wsum = 0.0;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      float w = exp(-float(i * i + j * j) * 0.35);
+      sum += texture2D(uSource, vUv + vec2(float(i), float(j)) * r).xy * w;
+      wsum += w;
+    }
+  }
+  gl_FragColor = vec4(sum / wsum, 0.0, 1.0);
 }
 `;
 
@@ -265,29 +304,6 @@ void main() {
 }
 `;
 
-/**
- * Dye. The glyph mask feeds it, it is advected by the flow, and it is pulled
- * back toward the mask each frame — the spring relaxation that returns the
- * stretched mercury to the type when the pointer leaves.
- */
-export const DYE = `
-precision highp float;
-varying vec2 vUv;
-uniform sampler2D uDye;
-uniform sampler2D uMask;
-uniform float uDt;
-uniform float uInflow;
-uniform float uReturn;
-uniform float uDissip;
-void main() {
-  float d = texture2D(uDye, vUv).r;
-  float m = texture2D(uMask, vUv).r;
-  d += m * uInflow * uDt;
-  d = mix(d, m, clamp(uReturn * uDt, 0.0, 1.0));
-  d *= 1.0 - uDissip * uDt;
-  gl_FragColor = vec4(clamp(d, 0.0, 1.0), 0.0, 0.0, 1.0);
-}
-`;
 
 /**
  * Display. The dye is a height field: its gradient is the surface normal, and
@@ -296,199 +312,98 @@ void main() {
  * cool sky — all built from the brand palette, so the mercury is never a grey
  * smear and never picks up a hue that is not TRADIA's.
  */
+/**
+ * Display — the text IS the oil.
+ *
+ * No separate liquid layer, nothing drawn around the type, no colour ever. The
+ * glyph mask is the material: its silhouette is warped by the fluid velocity, so
+ * the letters stretch, compress and bend the way thick oil would while staying
+ * in place as one connected mass. Every pixel leaving this pass is exactly
+ * (1,1,1); only alpha — the silhouette — moves.
+ *
+ *   text mask → fluid velocity → displaced glyph surface → white text
+ *
+ * The offset is a single low-frequency vector taken from the solver, so the warp
+ * varies smoothly across the whole word: a stem leans, a bowl swells. It is
+ * capped hard, and a dead zone at the bottom of its range returns the type to
+ * bit-for-bit pristine once the flow has decayed — so the settle ends truly
+ * clean rather than hovering at a faint permanent strain.
+ */
 export const DISPLAY = `
 precision highp float;
 varying vec2 vUv;
 
-uniform sampler2D uDye;
 uniform sampler2D uMask;
 uniform sampler2D uVelocity;
-uniform vec2 uTexel;      // dye texel
-uniform vec2 uMaskTexel;
-uniform float uTime;
-uniform float uStrength;
-uniform float uRelief;
-uniform float uTwist;
-uniform vec2 uPointer;
+uniform vec2 uVelTexel;
+uniform float uAspect;    // canvas width / height, to keep the warp isotropic
+uniform float uStrength;  // presence of the canvas (fade-in only)
+uniform float uOil;       // displacement per unit of flow speed
+uniform float uReach;     // hard cap on that displacement, in canvas heights
 
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-float vnoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-
-float dye(vec2 uv) { return texture2D(uDye, uv).r; }
-float maskRaw(vec2 uv) { return texture2D(uMask, uv).r; }
-float maskAt(vec2 uv) { return texture2D(uMask, uv).r; }
-
-// Small two-radius blur: enough to hide the simulation grid without turning the
-// surface into fog.
-float smoothDye(vec2 uv) {
-  vec2 r1 = uTexel * 1.3;
-  vec2 r2 = uTexel * 2.6;
-  float s = dye(uv) * 2.0;
-  s += dye(uv + vec2(r1.x, 0.0)) + dye(uv - vec2(r1.x, 0.0));
-  s += dye(uv + vec2(0.0, r1.y)) + dye(uv - vec2(0.0, r1.y));
-  s += dye(uv + vec2(r2.x, 0.0)) + dye(uv - vec2(r2.x, 0.0));
-  s += dye(uv + vec2(0.0, r2.y)) + dye(uv - vec2(0.0, r2.y));
-  s += dye(uv + vec2(r1.x, r1.y)) + dye(uv - vec2(r1.x, r1.y));
-  s += dye(uv + vec2(r1.x, -r1.y)) + dye(uv - vec2(r1.x, -r1.y));
-  return s / 14.0;
-}
-
-// Soft dilation of the type: the film of liquid clinging to the letterforms.
-float maskHalo(vec2 uv) {
-  vec2 r1 = uMaskTexel * 5.0;
-  vec2 r2 = uMaskTexel * 12.0;
-  float s = maskAt(uv) * 2.0;
-  s += maskAt(uv + vec2(r1.x, 0.0)) + maskAt(uv - vec2(r1.x, 0.0));
-  s += maskAt(uv + vec2(0.0, r1.y)) + maskAt(uv - vec2(0.0, r1.y));
-  s += maskAt(uv + vec2(r1.x, r1.y)) + maskAt(uv - vec2(r1.x, r1.y));
-  s += maskAt(uv + vec2(r1.x, -r1.y)) + maskAt(uv - vec2(r1.x, -r1.y));
-  s += maskAt(uv + vec2(r2.x, 0.0)) + maskAt(uv - vec2(r2.x, 0.0));
-  s += maskAt(uv + vec2(0.0, r2.y)) + maskAt(uv - vec2(0.0, r2.y));
-  return s / 14.0;
+/*
+  Nine-tap mean of the warp field. The field is smoothed on its own grid already,
+  but one tap per screen pixel still picks up that grid; this closes the gap so
+  the warp varies continuously across a letterform.
+*/
+vec2 flow(vec2 uv) {
+  vec2 t = uVelTexel * 2.0;
+  vec2 v = texture2D(uVelocity, uv).xy * 4.0;
+  v += texture2D(uVelocity, uv + vec2(t.x, 0.0)).xy * 2.0;
+  v += texture2D(uVelocity, uv - vec2(t.x, 0.0)).xy * 2.0;
+  v += texture2D(uVelocity, uv + vec2(0.0, t.y)).xy * 2.0;
+  v += texture2D(uVelocity, uv - vec2(0.0, t.y)).xy * 2.0;
+  v += texture2D(uVelocity, uv + t).xy;
+  v += texture2D(uVelocity, uv - t).xy;
+  v += texture2D(uVelocity, uv + vec2(t.x, -t.y)).xy;
+  v += texture2D(uVelocity, uv + vec2(-t.x, t.y)).xy;
+  return v / 16.0;
 }
 
 /*
-  ── the twist ────────────────────────────────────────────────────────────
-
-  Everything below reads the type at a *displaced* coordinate. The glyphs are not
-  a mask painted over a fluid; they are sampled through the liquid's own velocity
-  field, so the letterforms themselves shear, stretch and curl with the flow.
-  That is the difference between an effect sitting on the text and an effect made
-  of the text.
-
-  The displacement is layered:
-    - large-scale from the simulated velocity (the big pull toward the pointer),
-    - a rotational swirl about the pointer (the twist),
-    - a fine, high-frequency warp so the surface is never a rigid translate.
+  Glyph coverage. One bilinear tap: the mask is rasterised at twice the canvas
+  resolution, so its own filter footprint is already half a screen pixel.
 */
-vec2 flowWarp(vec2 uv) {
-  /*
-     The instantaneous velocity is noisy frame to frame, and driving the glyph
-     sample straight off it sheared whole letters apart. Averaging over a small
-     stencil gives the *tendency* of the flow rather than a single cell, and the
-     result is clamped so no pointer pass can tear a letterform.
-  */
-  vec2 t = uTexel * 3.0;
-  vec2 v = texture2D(uVelocity, uv).xy * 2.0;
-  v += texture2D(uVelocity, uv + vec2(t.x, 0.0)).xy;
-  v += texture2D(uVelocity, uv - vec2(t.x, 0.0)).xy;
-  v += texture2D(uVelocity, uv + vec2(0.0, t.y)).xy;
-  v += texture2D(uVelocity, uv - vec2(0.0, t.y)).xy;
-  v /= 6.0;
-  vec2 w = v * 0.017;
-  float lim = 0.0042;
-  float len = length(w);
-  return len > lim ? w * (lim / len) : w;
-}
-
-/*
-  Swirl about the pointer-projected point. Kept out of the solver on purpose: a
-  pure rotation is also curl-free-ish and the projection eats it, so the twist is
-  applied here where it is guaranteed to survive.
-*/
-vec2 swirl(vec2 uv, vec2 c, float amount) {
-  vec2 d = uv - c;
-  float r = length(d);
-  float falloff = exp(-r * r * 34.0);
-  float a = amount * falloff;
-  float s = sin(a);
-  float co = cos(a);
-  return vec2(d.x * co - d.y * s, d.x * s + d.y * co) + c;
-}
+float glyph(vec2 uv) { return texture2D(uMask, uv).r; }
 
 void main() {
-  vec2 uv = vUv;
-
-  vec2 centre = uPointer;
-
-  // ── the displacement that fuses type and liquid ──
-  vec2 w = flowWarp(uv);
-  w += (vec2(vnoise(uv * vec2(7.0, 9.0) + uTime * 0.06),
-             vnoise(uv * vec2(9.0, 7.0) - uTime * 0.05)) - 0.5) * 0.0008;
-
-  // Twist the sampled coordinate about the pointer, strongest at the centre.
-  vec2 twisted = swirl(uv, centre, uTwist);
-
-  /* Mask, sampled through the warped, twisted coordinate. This is what makes the
-     letters deform: whole strokes bend toward the cursor and curl with it. */
-  float mWarp = maskRaw(twisted + w);
   /*
-     A second, barely-displaced sample. Substituting its high values over the
-     warped one gives the letter a defined core: the outline can strain as much
-     as the flow wants, but the body of each stroke keeps a solid edge, which is
-     what keeps the headline readable at full strength.
+     Work in "isotropic uv": x scaled by the aspect, so one unit is the same
+     distance either way. Plain uv would shear the letters sideways, because the
+     canvas is six times wider than it is tall.
   */
-  float mCore = maskRaw(uv + w * 0.22);
+  vec2 iso = vec2(uAspect, 1.0);
+
+  vec2 raw = flow(vUv) * iso * uOil;
+  float amount = min(length(raw), uReach);
 
   /*
-     ── white only ───────────────────────────────────────────────────────────
-     The one hard rule: this effect may only touch the SHAPE of the type, never
-     its colour. So this pass has no colour model at all.
-
-     There is no reflection, no specular, no fresnel, no gradient and no tint —
-     everything here is pure white (1,1,1) at varying ALPHA. The shading that
-     used to live in these channels now lives entirely in opacity, so the liquid
-     still reads as a raised surface (crests catch light, flanks fall away) while
-     every pixel it paints is #FFFFFF. Over white type, the result is white type:
-     the fluid can only ever add white or nothing.
-
-     Because alpha is the only channel, the interaction affects geometry alone.
-     No colour shift is reachable at any distortion strength.
+     Dead zone. Below the threshold nothing moves at all — that is what makes the
+     end of the settle genuinely clean instead of a permanent faint strain. The
+     floor is set just above one screen pixel of travel: any residual slower than
+     that is invisible in motion and would only show as a frozen wobble.
   */
-  float glyph = clamp(max(mWarp, mCore), 0.0, 1.0);
-  float dyeH = smoothDye(uv);
-
-  // Height: the pool, with the letterform standing out of it as a crest.
-  float h = dyeH * 0.55 + glyph * 0.62;
-
-  // Normal of that combined height field. Used ONLY to modulate alpha: steep
-  // flanks read as falling away from the light, flat crests as facing it.
-  vec2 e = uTexel * 1.8;
-  vec2 eM = uMaskTexel * 3.2;
-  float hx = (smoothDye(uv + vec2(e.x, 0.0)) - smoothDye(uv - vec2(e.x, 0.0))) * 0.55
-           + (maskRaw(twisted + w + vec2(eM.x, 0.0)) - maskRaw(twisted + w - vec2(eM.x, 0.0))) * 0.62 / 3.2;
-  float hy = (smoothDye(uv + vec2(0.0, e.y)) - smoothDye(uv - vec2(0.0, e.y))) * 0.55
-           + (maskRaw(twisted + w + vec2(0.0, eM.y)) - maskRaw(twisted + w - vec2(0.0, eM.y))) * 0.62 / 3.2;
-
-  // The light comes from above-left. Positive = facing it.
-  float facing = clamp(1.0 - (hx * 0.5 - hy * 0.85) * 26.0, 0.0, 1.0);
-
-  // A soft sheen across the crest: the meniscus highlight, expressed as alpha.
-  float sheen = smoothstep(0.35, 1.0, facing);
+  amount *= smoothstep(0.0030, 0.0095, amount);
+  vec2 d = length(raw) > 1e-6 ? normalize(raw) * amount : vec2(0.0);
 
   /*
-     Alpha. The glyph is solid white; the pool is a translucent white body that
-     thins to nothing at its edge; the meniscus sits just above the type.
+     One offset. Walking several steps back along the flow sounds more physical,
+     but each step re-samples a field the previous step already moved, and the
+     per-pixel variation that introduces is visible as grain along the edge. The
+     field is already smooth and already curved, so one offset carries all of it.
   */
-  float body = smoothstep(0.10, 0.55, dyeH);
-  float halo = maskHalo(uv);
-  float rim = clamp(halo - maskAt(uv), 0.0, 1.0);
-  float rimA = smoothstep(0.0, 0.45, rim) * 0.55;
+  vec2 p = vUv - d / iso;
 
-  float fluid = max(body * 0.82, rimA);
-  // Shading applies to the LIQUID only, in opacity. The glyph is solid: its
-  // interior must never thin out, or the page shows through the letterform.
-  fluid *= mix(0.62, 1.0, sheen);
-  float alpha = max(fluid, glyph) * uStrength;
-
-  // The pool must not end on the canvas edge, or the crop reads as a rectangle.
-  alpha *= smoothstep(0.0, 0.09, vUv.x) * smoothstep(1.0, 0.91, vUv.x)
-         * smoothstep(0.0, 0.13, vUv.y) * smoothstep(1.0, 0.87, vUv.y);
+  float a = glyph(p);
 
   /*
-     Pure white, premultiplied. The context is created with premultipliedAlpha,
-     so colour must be scaled by alpha or a bright colour at a near-zero alpha
-     adds instead of blends. Scaling from (1,1,1) keeps every output pixel
-     exactly white; only its coverage varies.
+     Drawn-out oil is very slightly thinner. One cue, no colour, and small enough
+     that it never eats into a stem.
   */
+  a *= 1.0 - 0.10 * clamp(amount / max(uReach, 1e-5), 0.0, 1.0);
+
+  float alpha = clamp(a, 0.0, 1.0) * uStrength;
+
   const vec3 WHITE = vec3(1.0);
   gl_FragColor = vec4(WHITE * alpha, alpha);
 }
