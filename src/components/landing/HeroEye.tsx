@@ -157,21 +157,33 @@ export function HeroEye() {
 
   return (
     /*
-       The eye's own zone.
+       An overlay, not a row.
 
-       It reserves the vertical space the eye needs and nothing else does: the
-       headline sits below this box, so the box's height is exactly the room the
-       eye has to grow into, and the reserved space keeps the headline from moving
-       when the eye pops. `bottom` places the eye so its lower portion hangs past
-       the box's foot and behind the first line of type.
+       Nothing here participates in layout: the box is anchored to the headline's
+       top edge, has no height of its own, and the eye is drawn upwards out of it.
+       That is deliberate — the eye can then be any size at all without moving the
+       headline, the paragraph, the buttons or anything else on the page. Only the
+       design decides where those sit (the wrapper's own padding), never the eye.
+
+       `--eye-h` is the artwork's rendered height and `--eye-anchor` the distance
+       from the headline's top edge to the top of that box: with the oval running
+       0.113…0.827 of the box, a 0.6127 offset leaves exactly 30% of the eye's
+       height below the headline's top edge.
     */
     <div
       aria-hidden
-      className="relative w-full"
-      style={{ height: "var(--eye-zone)" }}
+      /*
+         No `z-index` here on purpose. A z-index would make this box a stacking
+         context and trap the trigger beneath the headline (which is z-20), so the
+         hover would never fire. Left at `auto`, the trigger (z-30) and the eye
+         (z-10) both participate in the wrapper's stacking context and land on the
+         right sides of the type: eye behind, trigger in front.
+      */
+      className="pointer-events-none absolute inset-x-0"
+      style={{ top: "var(--eye-zone)" }}
     >
       {/*
-         The trigger. It covers the eye zone AND the headline below it, so the
+         The trigger. It covers the eye's box AND the headline below it, so the
          gesture is "the visitor is looking at the words", not "the pointer is
          within a few pixels of a hidden box".
 
@@ -180,7 +192,8 @@ export function HeroEye() {
          per tap would be a defect rather than a delight.
       */}
       <div
-        className="absolute inset-x-0 -bottom-[var(--headline-h)] top-0 z-30"
+        className="pointer-events-auto absolute inset-x-0 bottom-[calc(-1*var(--headline-h))] z-30"
+        style={{ top: "var(--eye-anchor)" }}
         onPointerEnter={(e) => {
           if (e.pointerType === "touch") return;
           run();
@@ -188,24 +201,17 @@ export function HeroEye() {
       />
 
       {/*
-         The eye, behind the type. Anchored to the bottom of its zone and allowed
-         to hang below it, so the lower part of the eye is genuinely underneath the
-         headline rather than stopping short of it.
+         The eye itself: an absolutely positioned box hanging off the headline's
+         top edge. Its lower 30% overlaps the type, which is the point — the
+         headline is z-20 against this z-10, so the letters paint on top and the
+         eye reads as rising from behind them.
       */}
       <div
         ref={eyeRef}
         data-hero-eye
         className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 opacity-0"
         style={{
-          /*
-             Derived, not eyeballed. In the artwork the oval ends at 248/300 of the
-             SVG's height, the SVG is 0.9375 × eye-size tall, and the alpha ramp
-             hits zero at 220/300 — so hanging the box by 0.229 × eye-size puts
-             that zero-alpha line exactly on the headline's top edge. Everything
-             below it is the invisible tenth, and it is what sits behind the type,
-             so the eye clears "Read the market" by construction at any size.
-          */
-          bottom: "calc(-0.229 * var(--eye-size))",
+          top: "var(--eye-anchor)",
           width: "var(--eye-size)",
           willChange: "transform, opacity",
         }}
@@ -263,13 +269,11 @@ function EyeArt({
           y2="248"
         >
           <stop offset="0" stopColor="#fff" stopOpacity="1" />
-          <stop offset="0.40" stopColor="#fff" stopOpacity="1" />
-          <stop offset="0.62" stopColor="#fff" stopOpacity="0.97" />
-          <stop offset="0.74" stopColor="#fff" stopOpacity="0.86" />
-          <stop offset="0.80" stopColor="#fff" stopOpacity="0.62" />
-          <stop offset="0.85" stopColor="#fff" stopOpacity="0.30" />
-          {/* The lowest 10% of the oval: nothing at all. */}
-          <stop offset="0.90" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.34" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.56" stopColor="#fff" stopOpacity="0.95" />
+          <stop offset="0.66" stopColor="#fff" stopOpacity="0.80" />
+          {/* 30% of the eye's height below the headline's top edge: nothing at all. */}
+          <stop offset="0.70" stopColor="#fff" stopOpacity="0" />
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
         {/*

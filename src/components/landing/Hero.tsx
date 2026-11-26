@@ -123,7 +123,7 @@ export function Hero() {
            less the part designed to hang behind the headline.
         */}
         <div
-          className="relative w-full"
+          className="relative w-full pt-[var(--eye-zone)]"
           style={
             {
               /*
@@ -138,7 +138,11 @@ export function Hero() {
                  no dead air.
               */
               "--eye-alpha": "0.5",
-              "--eye-size": "clamp(150px, 16vw, 226px)",
+              /*
+                 Big, as asked: 38vw up to 400px on a wide desktop. The eye is an
+                 overlay, so this size costs the page nothing in layout.
+              */
+              "--eye-size": "clamp(210px, 26vw, 350px)",
               /*
                  `--eye-zone` is derived from the eye rather than guessed, because
                  the eye and the headline are now stacked without touching and the
@@ -152,7 +156,36 @@ export function Hero() {
                  appears to rise out of the type without a single letter dimmed.
                  Bigger zones are dead air that pushes the header down.
               */
-              "--eye-zone": "calc(0.602 * var(--eye-size) + 14px)",
+              /*
+                 The artwork's boxes, expressed once, because two different things
+                 need them: the page reserves the room above the headline, and the
+                 eye anchors itself where 30% of its height falls below the type.
+                 The oval runs 34…248 of the 300-unit viewBox, so in rendered pixels
+                 it is 0.113…0.827 of the SVG's height, and the SVG is 0.9375 ×
+                 eye-size tall.
+              */
+              "--eye-h": "calc(0.9375 * var(--eye-size))",
+              "--eye-oval-top": "calc(0.113 * var(--eye-h))",
+              "--eye-oval-h": "calc(0.714 * var(--eye-h))",
+              /*
+                 70% of the eye above the headline's top edge, 30% behind it — and
+                 `--eye-air` is the breathing room between the badge and the first
+                 pixel of the eye, since the artwork's box starts above its ink.
+              */
+              "--eye-air": "28px",
+              /*
+                 Negative on purpose: the eye's box starts ABOVE the headline's top
+                 edge, by exactly 70% of the oval plus the artwork's own top margin.
+                 The oval's bottom then lands 30% of its height below that edge.
+              */
+              "--eye-anchor": "calc(-1 * (0.70 * var(--eye-oval-h) + var(--eye-oval-top)))",
+              /*
+                 Layout duty, and the ONLY thing the eye does to the page: reserve
+                 the eye's top edge with air above it, so the headline below stays
+                 clear of the badge pill at every size. Measured from the ink, not
+                 guessed — the eye's own top margin in the artwork is subtracted.
+              */
+              "--eye-zone": "calc(0.70 * var(--eye-oval-h) + var(--eye-air))",
               "--headline-h": "clamp(52px, 6.7vw, 100px)",
             } as React.CSSProperties
           }
