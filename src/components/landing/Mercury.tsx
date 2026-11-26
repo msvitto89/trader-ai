@@ -461,6 +461,12 @@ export function Mercury() {
       pointer.y += (pointerTarget.y - pointer.y) * ease;
 
       const idle = pointerSeen > 0.12;
+      /*
+         Settle: 0 while the pointer is engaged, ramping to 1 a moment after it
+         leaves. Drives both the dye's return spring and the inflow, so the
+         mercury withdraws instead of hovering.
+      */
+      const settle = Math.min(1, Math.max(0, (pointerSeen - 0.35) / 0.45));
       const vx = idle ? 0 : (pointer.x - prevX) / Math.max(uiDt, 1e-3);
       const vy = idle ? 0 : (pointer.y - prevY) / Math.max(uiDt, 1e-3);
       // Smooth the drag, so one jittery frame cannot yank the fluid.
@@ -622,8 +628,15 @@ export function Mercury() {
         bind(1, maskTex);
         units(dyeP, { uDye: 0, uMask: 1 });
         gl.uniform1f(dyeP.loc("uDt"), dt);
-        gl.uniform1f(dyeP.loc("uInflow"), INFLOW * Math.max(present, 0.25));
-        gl.uniform1f(dyeP.loc("uReturn"), RETURN + (1 - present) * 6.0);
+        gl.uniform1f(dyeP.loc("uInflow"), INFLOW * (1 - settle));
+        /*
+           Relaxation. While the pointer is anywhere near the hero the dye is
+           held in its deformed state; once it has been gone a moment the spring
+           tightens hard and the liquid recedes back onto the letterforms. Without
+           this the pool stayed half-formed forever, because `present` is always
+           1 and the old collapse term was multiplied by zero.
+        */
+        gl.uniform1f(dyeP.loc("uReturn"), RETURN + settle * 9.0);
         gl.uniform1f(dyeP.loc("uDissip"), DYE_DISSIPATION);
       });
       swapDye();
