@@ -561,3 +561,25 @@ a:focus-visible {
   );
 }
 
+/*
+  ── custom cursor ─────────────────────────────────────────────────────────
+  The native cursor is hidden site-wide while the two bubble rings are running,
+  because two pointers on screen at once is worse than either alone. The class is
+  applied from JS only after the rings are live and only on devices that actually
+  hover, so a browser without pointer events, a touch device, or a visitor with
+  reduced motion keeps an ordinary, usable cursor.
+
+  Inputs opt back in: a text field or a textarea with no visible caret is
+  unusable, and the rings cannot show an I-beam.
+*/
+.cursor-none-site,
+.cursor-none-site * {
+  cursor: none;
+}
+
+.cursor-none-site input,
+.cursor-none-site textarea,
+.cursor-none-site select,
+.cursor-none-site [contenteditable="true"] {
+  cursor: auto;
+}

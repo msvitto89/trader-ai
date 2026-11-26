@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { CursorBubbles } from "@/components/landing/CursorBubbles";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,7 +20,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-canvas text-ink antialiased">{children}</body>
+      <body className="min-h-screen bg-canvas text-ink antialiased">
+        {children}
+        {/* The two cursor circles: site-wide chrome, not a section effect. */}
+        <CursorBubbles />
+      </body>
     </html>
   );
 }

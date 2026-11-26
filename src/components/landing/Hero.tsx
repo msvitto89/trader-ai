@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { BrandMarquee } from "./BrandMarquee";
 import { CandleField } from "./CandleField";
-import { Mercury } from "./Mercury";
 import { KineticText } from "./KineticText";
 import { FadeInUp } from "./reveal";
 import { Magnetic } from "./interactive";
@@ -88,17 +87,16 @@ export function Hero() {
           </span>
         </FadeInUp>
 
-        {/* The headline is the source of the mercury: the fluid renders over
-            the type and is relaxed back onto it, so the letters never move. */}
-        <div className="relative w-full">
-          <Mercury />
-          <KineticText
-            text="Read the market"
-            fluidTarget
-            delay={0.18}
-            className="relative z-20 mx-auto block max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
-          />
-        </div>
+        {/*
+           The headline is plain white type on the page. The fluid surface that
+           used to deform it has been removed; the only cursor treatment left is
+           the pair of circles in the root layout.
+        */}
+        <KineticText
+          text="Read the market"
+          delay={0.18}
+          className="relative z-20 mx-auto block w-full max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
+        />
 
         <KineticText
           as="p"
