@@ -355,15 +355,27 @@ float maskHalo(vec2 uv) {
   return s / 14.0;
 }
 
+/*
+  Fusion-dominant ramp. The surface reads as fusion (#D7EFFF) everywhere; ice and
+  deep ice appear only as the shading that gives it form, and blacktop only in
+  the deepest reflection. Bending the ramp this way is what makes the whole
+  effect one colour instead of a dark chrome object with pale highlights.
+*/
 vec3 palette(float t) {
   vec3 blacktop = vec3(0.039, 0.039, 0.039);
   vec3 deepIce  = vec3(0.239, 0.561, 0.788);
   vec3 ice      = vec3(0.553, 0.863, 0.969);
   vec3 fusion   = vec3(0.843, 0.937, 1.000);
   t = clamp(t, 0.0, 1.0);
-  if (t < 0.34) return mix(blacktop, deepIce, smoothstep(0.0, 0.34, t));
-  if (t < 0.68) return mix(deepIce, ice, smoothstep(0.34, 0.68, t));
-  return mix(ice, fusion, smoothstep(0.68, 1.0, t));
+  /*
+     The ice and deep-ice stops are compressed into the bottom third on purpose.
+     Spread evenly they made the body read cyan — especially under motion, where
+     the dye is dense and the whole surface sat in the ice part of the ramp.
+     Fusion owns everything from 0.3 up, so the effect is one colour.
+  */
+  if (t < 0.08) return mix(blacktop, deepIce, smoothstep(0.0, 0.08, t));
+  if (t < 0.30) return mix(deepIce, ice, smoothstep(0.08, 0.30, t));
+  return mix(ice, fusion, smoothstep(0.30, 0.66, t));
 }
 
 /*
@@ -372,13 +384,13 @@ vec3 palette(float t) {
 */
 vec3 studio(vec3 R) {
   float y = R.y;
-  vec3 floorCol = vec3(0.012, 0.018, 0.028);
-  vec3 sky = mix(vec3(0.050, 0.085, 0.125), palette(0.66), smoothstep(-0.05, 0.95, y));
+  vec3 floorCol = palette(0.30);
+  vec3 sky = mix(palette(0.66), palette(0.95), smoothstep(-0.05, 0.95, y));
   vec3 c = mix(floorCol, sky, smoothstep(-0.02, 0.10, y));
   float horizon = smoothstep(0.115, 0.006, abs(y - 0.030));
-  c = mix(c, palette(0.97), horizon * 0.95);
+  c = mix(c, palette(1.0), horizon * 0.92);
   float high = smoothstep(0.30, 0.02, abs(y - 0.50));
-  c = mix(c, palette(0.80), high * 0.45);
+  c = mix(c, palette(0.95), high * 0.55);
   return c;
 }
 
@@ -397,9 +409,23 @@ vec3 studio(vec3 R) {
     - a fine, high-frequency warp so the surface is never a rigid translate.
 */
 vec2 flowWarp(vec2 uv) {
-  // The field is sampled in the dye's space; velocity is in crop units already.
-  vec2 v = texture2D(uVelocity, uv).xy;
-  return v * 0.030;
+  /*
+     The instantaneous velocity is noisy frame to frame, and driving the glyph
+     sample straight off it sheared whole letters apart. Averaging over a small
+     stencil gives the *tendency* of the flow rather than a single cell, and the
+     result is clamped so no pointer pass can tear a letterform.
+  */
+  vec2 t = uTexel * 3.0;
+  vec2 v = texture2D(uVelocity, uv).xy * 2.0;
+  v += texture2D(uVelocity, uv + vec2(t.x, 0.0)).xy;
+  v += texture2D(uVelocity, uv - vec2(t.x, 0.0)).xy;
+  v += texture2D(uVelocity, uv + vec2(0.0, t.y)).xy;
+  v += texture2D(uVelocity, uv - vec2(0.0, t.y)).xy;
+  v /= 6.0;
+  vec2 w = v * 0.017;
+  float lim = 0.0042;
+  float len = length(w);
+  return len > lim ? w * (lim / len) : w;
 }
 
 /*
@@ -425,7 +451,7 @@ void main() {
   // ── the displacement that fuses type and liquid ──
   vec2 w = flowWarp(uv);
   w += (vec2(vnoise(uv * vec2(7.0, 9.0) + uTime * 0.06),
-             vnoise(uv * vec2(9.0, 7.0) - uTime * 0.05)) - 0.5) * 0.0016;
+             vnoise(uv * vec2(9.0, 7.0) - uTime * 0.05)) - 0.5) * 0.0008;
 
   // Twist the sampled coordinate about the pointer, strongest at the centre.
   vec2 twisted = swirl(uv, centre, uTwist);
@@ -453,9 +479,9 @@ void main() {
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
-  vec3 col = studio(R) * 1.30;
+  vec3 col = studio(R) * 1.12;
   // A little emissive body so the mass reads against the black page.
-  col += palette(0.34) * 0.30 * smoothstep(0.10, 0.75, h);
+  col += palette(0.86) * 0.24 * smoothstep(0.10, 0.75, h);
 
   // Two tight speculars: the hard white glints that make it wet.
   vec3 L1 = normalize(vec3(-0.40, 0.70, 0.58));
@@ -464,11 +490,11 @@ void main() {
   float d2 = max(dot(N, normalize(L2 + V)), 0.0);
   float spec = pow(d1, 260.0) * 3.2 + pow(d1, 26.0) * 0.20
              + pow(d2, 170.0) * 1.6 + pow(d2, 20.0) * 0.10;
-  col += vec3(0.85, 0.93, 1.00) * spec;
+  col += vec3(0.85, 0.93, 1.00) * spec * 0.75;
 
   // Fresnel: a cold ice rim wherever the surface turns away from the viewer.
   float fres = pow(1.0 - max(dot(N, V), 0.0), 4.5);
-  col += palette(0.70) * fres * 0.85;
+  col += palette(0.94) * fres * 0.55;
 
   /*
      Fusion. The metal is poured INTO the type: the displaced glyph is shaded as
@@ -484,19 +510,19 @@ void main() {
      readable while still looking like the same liquid as everything else.
   */
   float bandT = clamp(R.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 chromeType = mix(vec3(0.055, 0.075, 0.100), palette(0.72),
-                        smoothstep(0.50, 0.86, bandT));
-  chromeType = mix(chromeType, vec3(0.97, 0.99, 1.0),
+  vec3 chromeType = mix(palette(0.74), palette(0.97),
+                        smoothstep(0.42, 0.88, bandT));
+  chromeType = mix(chromeType, vec3(0.98, 0.995, 1.0),
                    smoothstep(0.10, 0.02, abs(bandT - 0.62)));
-  chromeType += vec3(0.80, 0.90, 1.00) * spec * 0.22;
-  chromeType += palette(0.55) * fres * 0.30;
+  chromeType += vec3(0.85, 0.93, 1.00) * spec * 0.16;
+  chromeType += palette(0.90) * fres * 0.22;
 
   col = mix(col, chromeType, clamp(mWarp, 0.0, 1.0));
 
   // Liquid film clinging to the letter edges, also warped with the type.
   float halo = maskHalo(uv);
   float rim = clamp(halo - maskAt(uv), 0.0, 1.0);
-  col += vec3(0.74, 0.88, 1.00) * rim * 0.85;
+  col += palette(0.98) * rim * 0.62;
 
   /*
      A defined body, not fog: the edge of the pool should be a surface. Where the
@@ -520,6 +546,13 @@ void main() {
      browser adds it, so the whole canvas washed out to pale blue where the
      liquid was not even present. Colour has to be scaled by alpha here.
   */
+  /*
+     Soft highlight roll-off. Without it the speculars and the dense dye crossed
+     1.0 together and the word turned into a white smear exactly when the cursor
+     was on it — the most important moment to still read.
+  */
+  col = col / (1.0 + max(col - 0.86, 0.0) * 1.6);
+
   gl_FragColor = vec4(col * alpha, alpha);
 }
 `;

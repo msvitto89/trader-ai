@@ -47,7 +47,7 @@ import {
  * several crop widths per second: the dye left the domain in a few frames and
  * the surface never had time to look viscous.
  */
-const PULL = 3.6;
+const PULL = 1.7;
 /** Falloff exponent of the attraction field; higher = tighter to the cursor. */
 const FALLOFF = 6.2;
 /**
@@ -60,32 +60,32 @@ const ANCHOR = 7.0;
 /** Global viscous damping of the velocity field. */
 const DAMP = 1.0;
 /** Vorticity confinement: keeps curls rolling instead of diffusing. */
-const VORTICITY_STRENGTH = 30;
+const VORTICITY_STRENGTH = 20;
 /** Viscous diffusion coefficient per Jacobi step. */
 const VISCOSITY_NU = 0.007;
 const VISCOSITY_STEPS = 1;
 const PRESSURE_STEPS = 18;
 /** Dye seeded from the glyphs per second. */
-const INFLOW = 13.0;
+const INFLOW = 7.0;
 /** Spring rate pulling the dye back onto the glyphs. */
 const RETURN = 0.42;
 /** How fast stretched mercury evaporates once unsupported. */
-const DYE_DISSIPATION = 0.30;
+const DYE_DISSIPATION = 0.55;
 /** Relief used for the surface normal: higher = more violent highlights. */
-const RELIEF = 3.4;
+const RELIEF = 2.1;
 /**
  * Peak rotation, in radians, that the type is twisted through at the pointer.
  * Applied in the display pass rather than the solver: a rotation about a point
  * is close to curl-free, so the pressure projection would flatten it.
  */
-const TWIST = 0.17;
+const TWIST = 0.055;
 /**
  * How hard the letterforms are displaced by the fluid's own velocity. This is
  * what fuses type and metal — the glyphs are sampled through the flow, so they
  * shear and stretch with it instead of merely being covered by it. Kept small:
  * the first attempt read as the word being torn apart rather than strained.
  */
-const TEXT_WARP = 0.4;
+const TEXT_WARP = 0.16;
 /**
  * Simulation rows. Sizing by the long edge gave a ~13:1 band only sixteen cells
  * tall, which read as blocks; the row count is what actually needs guaranteeing.
@@ -360,11 +360,7 @@ export function Mercury() {
     let pointerSeen = 0; // seconds since the pointer last moved
     let present = 0; // 0..1 — ramps the whole effect, so it never snaps
 
-    let clientX = -9999;
-    let clientY = -9999;
     const toUv = (e: PointerEvent) => {
-      clientX = e.clientX;
-      clientY = e.clientY;
       const r = canvas.getBoundingClientRect();
       pointerTarget = {
         x: (e.clientX - r.left) / Math.max(r.width, 1),
@@ -427,12 +423,13 @@ export function Mercury() {
     // The headline's resting opacity, so it can be restored exactly.
     const baseOpacity = getComputedStyle(target).opacity || "1";
     let prevOpacity = "";
-    const opacityFor = (p: number) => {
-      // Hand over to the shader's own type exactly as it reaches full strength.
-      const t = Math.min(1, Math.max(0, (p - 0.35) / 0.4));
-      const still = 1 - t * t * (3 - 2 * t);
-      return String(Number(baseOpacity) * still);
-    };
+    /*
+       The shader draws the type, so the DOM headline is hidden outright. It has
+       to stay in the document — it is what the glyph mask is measured from —
+       but showing it too would stack a still copy under a strained one.
+    */
+    const opacityFor = (p: number) =>
+      String(Number(baseOpacity) * Math.min(1, Math.max(0, 1 - p * 1.6)));
 
     const frame = (now: number) => {
       if (!alive) return;
@@ -472,29 +469,12 @@ export function Mercury() {
       pointerVel.y += (vy - pointerVel.y) * ke;
 
       /*
-         Presence. The pool must be dormant until the pointer comes near the
-         headline, then arrive quickly and leave slowly — the mercury is viscous,
-         so it should sag back rather than switch off.
+         Always on. The metal is the headline's own finish from the first frame;
+         the pointer only adds strain. `present` is kept as the single fade
+         channel so the arrival is still soft rather than a snap.
       */
-      /*
-         Measured against the headline's own box, not the canvas: the canvas is
-         deliberately taller than the line, so a canvas-relative test stayed
-         true everywhere on the page and the pool never went dormant.
-      */
-      const box = target.getBoundingClientRect();
-      const padX = box.width * 0.06;
-      const padY = box.height * 3.2;
-      const nearHero =
-        pointerSeen < 3.0 &&
-        clientX > box.left - padX &&
-        clientX < box.right + padX &&
-        clientY > box.top - padY &&
-        clientY < box.bottom + box.height * 0.9;
-      const want = nearHero ? 1 : 0;
-      // Arrive briskly, leave slowly enough that the mercury visibly sags back.
-      const rate = want > present ? 1 / 0.7 : 1 / 1.1;
-      present += (want > present ? 1 : -1) * Math.min(Math.abs(want - present), uiDt * rate);
-      present = Math.max(0, Math.min(1, present));
+      present += (1 - present) * Math.min(1, uiDt * 2.2);
+      if (present > 0.999) present = 1;
 
       if (!vel || !dye || !pressure || !divergence || !curl || !maskTex) return;
 
