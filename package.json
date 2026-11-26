@@ -1,0 +1,39 @@
+{
+  "name": "tradia-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TRADIA AI \u2014 AI trading intelligence, risk and journaling workspace",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p ${PORT:-3000}",
+    "build": "next build",
+    "start": "node scripts/bootstrap.mjs && next start -H 0.0.0.0",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:seed": "tsx scripts/seed.ts",
+    "test": "tsx --test src/lib/__tests__/*.test.ts"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "gsap": "^3.15.1",
+    "lenis": "^1.3.28",
+    "lucide-react": "^0.545.0",
+    "motion": "^14.14.0",
+    "next": "^16.4.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "tsx": "^4.23.15",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.74.0"
+  }
+}
