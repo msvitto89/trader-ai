@@ -202,7 +202,16 @@ export function HeroEye() {
           willChange: "transform, opacity",
         }}
       >
-        <EyeArt irisRef={irisRef} lidRef={lidRef} />
+        {/*
+           `--eye-alpha` is the eye's overall strength, kept separate from the
+           pop animation's own opacity so the two can be tuned independently: the
+           animation needs 0..1 to fade in and out, the design needs the eye dimmer
+           than full white while it is up. Multiplying them here rather than
+           overriding `style.opacity` leaves the animation honest.
+        */}
+        <div style={{ opacity: "var(--eye-alpha)" }}>
+          <EyeArt irisRef={irisRef} lidRef={lidRef} />
+        </div>
       </div>
     </div>
   );
@@ -246,11 +255,12 @@ function EyeArt({
           y2="248"
         >
           <stop offset="0" stopColor="#fff" stopOpacity="0.95" />
-          <stop offset="0.24" stopColor="#fff" stopOpacity="0.90" />
-          <stop offset="0.44" stopColor="#fff" stopOpacity="0.68" />
-          <stop offset="0.60" stopColor="#fff" stopOpacity="0.40" />
-          <stop offset="0.74" stopColor="#fff" stopOpacity="0.17" />
-          <stop offset="0.86" stopColor="#fff" stopOpacity="0.05" />
+          <stop offset="0.22" stopColor="#fff" stopOpacity="0.88" />
+          <stop offset="0.42" stopColor="#fff" stopOpacity="0.62" />
+          <stop offset="0.56" stopColor="#fff" stopOpacity="0.32" />
+          <stop offset="0.66" stopColor="#fff" stopOpacity="0.11" />
+          {/* The lowest 30% of the oval: nothing at all. */}
+          <stop offset="0.70" stopColor="#fff" stopOpacity="0" />
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
         {/*

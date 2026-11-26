@@ -61,7 +61,7 @@ export function Hero() {
          the headline off the top of the screen. Starting from the top instead
          means every offset below is measured from a known edge.
       */
-      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-[72px]"
+      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-14"
     >
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -137,6 +137,7 @@ export function Hero() {
                  the headline, so the headline sits exactly one eye above nothing —
                  no dead air.
               */
+              "--eye-alpha": "0.78",
               "--eye-size": "clamp(150px, 22vw, 300px)",
               /*
                  `--eye-zone` is only the room ABOVE the headline. The eye hangs
@@ -148,7 +149,7 @@ export function Hero() {
                  headline down, which is the bug being fixed; any smaller and the
                  eye's top edge collides with the badge.
               */
-              "--eye-zone": "clamp(100px, 10.4vw, 150px)",
+              "--eye-zone": "clamp(94px, 9.8vw, 140px)",
               "--headline-h": "clamp(52px, 6.7vw, 100px)",
             } as React.CSSProperties
           }
