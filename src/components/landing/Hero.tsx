@@ -61,7 +61,7 @@ export function Hero() {
          the headline off the top of the screen. Starting from the top instead
          means every offset below is measured from a known edge.
       */
-      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-24 pt-24"
+      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-[72px]"
     >
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -123,11 +123,32 @@ export function Hero() {
            less the part designed to hang behind the headline.
         */}
         <div
-          className="relative w-full pt-[var(--eye-zone)]"
+          className="relative w-full"
           style={
             {
-              "--eye-size": "clamp(150px, 23vw, 330px)",
-              "--eye-zone": "clamp(78px, 12.5vw, 178px)",
+              /*
+                 One decision, expressed once. `HeroEye` reserves `--eye-zone`
+                 itself, so the wrapper must NOT also pad by it: doing both made
+                 the eye's space count twice and pushed the headline 350px down the
+                 page. The variables live here because both the eye and the trigger
+                 inside it read them.
+
+                 The zone is the eye's height less the part designed to hang behind
+                 the headline, so the headline sits exactly one eye above nothing —
+                 no dead air.
+              */
+              "--eye-size": "clamp(150px, 22vw, 300px)",
+              /*
+                 `--eye-zone` is only the room ABOVE the headline. The eye hangs
+                 exactly 40% of its height below the headline's top edge (see
+                 HeroEye), so the zone carries the other 60%: the eye's rendered
+                 height is 0.9375 × eye-size and the artwork has ~11% empty space
+                 above the oval, so the zone is eye-size × 0.9375 × 0.6, rounded —
+                 0.5625 × eye-size. Sized any larger it is dead air that pushes the
+                 headline down, which is the bug being fixed; any smaller and the
+                 eye's top edge collides with the badge.
+              */
+              "--eye-zone": "clamp(100px, 10.4vw, 150px)",
               "--headline-h": "clamp(52px, 6.7vw, 100px)",
             } as React.CSSProperties
           }

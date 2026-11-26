@@ -197,7 +197,7 @@ export function HeroEye() {
         data-hero-eye
         className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 opacity-0"
         style={{
-          bottom: "calc(-0.20 * var(--eye-size))",
+          bottom: "calc(-0.375 * var(--eye-size))",
           width: "var(--eye-size)",
           willChange: "transform, opacity",
         }}
@@ -225,22 +225,33 @@ function EyeArt({
     <svg viewBox="0 0 320 300" fill="none" aria-hidden className="block w-full">
       <defs>
         {/*
-           The vertical alpha ramp. Offsets are placed against the OVAL's own
-           extent (y ≈ 34..246 of 300), not the viewBox, so these numbers mean what
-           the design asks for: a bright upper body dissolving to 10% at the lowest
-           edge, with no straight line anywhere.
+           The vertical alpha ramp, anchored with `userSpaceOnUse` to the OVAL's own
+           extent (y 34..248), NOT to the 0..300 viewBox. That distinction is the
+           whole point: a viewBox-anchored ramp still carries ~16% alpha where the
+           oval ends, which leaves a soft-but-readable cut-off along the bottom
+           curve. Anchored here, the last stop lands exactly on the oval's lowest
+           pixel and reaches zero, so the eye dissolves into the page instead of
+           ending.
 
            Weighted heavy through the middle on purpose: a straight 90→10 line
            makes the whole eye look like a ghost, whereas holding the core bright
            and dissolving only the last third makes it look solid AND buried.
         */}
-        <linearGradient id="eyeFade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity="0.92" />
-          <stop offset="0.30" stopColor="#fff" stopOpacity="0.90" />
-          <stop offset="0.52" stopColor="#fff" stopOpacity="0.76" />
-          <stop offset="0.70" stopColor="#fff" stopOpacity="0.52" />
-          <stop offset="0.85" stopColor="#fff" stopOpacity="0.27" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0.10" />
+        <linearGradient
+          id="eyeFade"
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="34"
+          x2="0"
+          y2="248"
+        >
+          <stop offset="0" stopColor="#fff" stopOpacity="0.95" />
+          <stop offset="0.24" stopColor="#fff" stopOpacity="0.90" />
+          <stop offset="0.44" stopColor="#fff" stopOpacity="0.68" />
+          <stop offset="0.60" stopColor="#fff" stopOpacity="0.40" />
+          <stop offset="0.74" stopColor="#fff" stopOpacity="0.17" />
+          <stop offset="0.86" stopColor="#fff" stopOpacity="0.05" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
         {/*
            A faint ice tint at the top and a cooler foot. Pure #FFF at these alphas
