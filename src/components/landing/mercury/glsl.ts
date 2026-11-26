@@ -382,15 +382,31 @@ vec3 palette(float t) {
   A studio, not a gradient. Mercury is legible because of what it reflects: a
   black floor, a hard bright horizon, a cold sky.
 */
+/*
+  The liquid's body: one hue, varying only in value. Every part of the surface —
+  pool, meniscus, letterform — is fusion, just at different depths and slopes.
+  That is what stops the type and the liquid reading as two materials.
+*/
+vec3 metalBody(float t) {
+  vec3 fusion = vec3(0.843, 0.937, 1.000);
+  vec3 deep   = vec3(0.105, 0.145, 0.180); // blacktop lifted toward fusion
+  /*
+     Not fusion * value: pure scaling leaves the shadows neutral grey and the
+     whole surface reads as silver. Darkening toward a fusion-tinted shadow keeps
+     the brand colour present at every point on the surface.
+  */
+  return mix(deep, fusion, clamp(t, 0.0, 1.0));
+}
+
 vec3 studio(vec3 R) {
   float y = R.y;
-  vec3 floorCol = palette(0.30);
-  vec3 sky = mix(palette(0.66), palette(0.95), smoothstep(-0.05, 0.95, y));
+  vec3 floorCol = metalBody(0.14);
+  vec3 sky = mix(metalBody(0.42), metalBody(0.86), smoothstep(-0.05, 0.95, y));
   vec3 c = mix(floorCol, sky, smoothstep(-0.02, 0.10, y));
   float horizon = smoothstep(0.115, 0.006, abs(y - 0.030));
-  c = mix(c, palette(1.0), horizon * 0.92);
+  c = mix(c, metalBody(1.0), horizon * 0.92);
   float high = smoothstep(0.30, 0.02, abs(y - 0.50));
-  c = mix(c, palette(0.95), high * 0.55);
+  c = mix(c, metalBody(0.80), high * 0.55);
   return c;
 }
 
@@ -467,12 +483,37 @@ void main() {
   */
   float mCore = maskRaw(uv + w * 0.22);
 
-  float h = smoothDye(uv);
+  /*
+     ── one surface ──────────────────────────────────────────────────────────
 
-  // Surface normal from the height field.
+     Type and liquid are not two things shaded separately and then composited.
+     The displaced glyph is folded into the SAME height field as the dye, and
+     everything below is a single metal surface shaded once. That is what makes
+     them one material instead of a bright copy sitting on a dark pool.
+
+     The glyph contributes a steep, narrow ridge; the dye contributes the broad
+     pool. Where they meet, the ridge simply rises out of the pool — the
+     letterform IS the crest of the liquid, so it catches its own reflection and
+     shares its body colour with everything around it.
+  */
+  float glyph = clamp(max(mWarp, mCore), 0.0, 1.0);
+  float dyeH = smoothDye(uv);
+
+  // Height: pool + the letterform standing out of it as a crest.
+  float h = dyeH * 0.55 + glyph * 0.62;
+
+  // Surface normal from the combined height field. The glyph's gradient is
+  // what gives the letters their machined edge, and it bends continuously into
+  // the pool's slope at the boundary.
   vec2 e = uTexel * 1.8;
-  float hx = smoothDye(uv + vec2(e.x, 0.0)) - smoothDye(uv - vec2(e.x, 0.0));
-  float hy = smoothDye(uv + vec2(0.0, e.y)) - smoothDye(uv - vec2(0.0, e.y));
+  vec2 eM = uMaskTexel * 3.2;
+  // The mask gradient is divided by the wider stencil so both terms share a
+  // comparable scale; without that the glyph term dwarfs the pool and the
+  // surface reads as embossed foil rather than liquid.
+  float hx = (smoothDye(uv + vec2(e.x, 0.0)) - smoothDye(uv - vec2(e.x, 0.0))) * 0.55
+           + (maskRaw(twisted + w + vec2(eM.x, 0.0)) - maskRaw(twisted + w - vec2(eM.x, 0.0))) * 0.62 / 3.2;
+  float hy = (smoothDye(uv + vec2(0.0, e.y)) - smoothDye(uv - vec2(0.0, e.y))) * 0.55
+           + (maskRaw(twisted + w + vec2(0.0, eM.y)) - maskRaw(twisted + w - vec2(0.0, eM.y))) * 0.62 / 3.2;
 
   // Subtle internal surface deformation, so the body is never perfectly calm.
   vec2 wob = vec2(
@@ -486,73 +527,47 @@ void main() {
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
-  vec3 col = studio(R) * 1.12;
-  // A little emissive body so the mass reads against the black page.
-  col += palette(0.86) * 0.24 * smoothstep(0.10, 0.75, h);
+  /*
+     One shading model for both. The reflection is sampled once and the same
+     value drives the pool and the letters, so the letters cannot be a different
+     colour from the liquid they sit in — they are the same chrome, at a
+     different slope.
+  */
+  vec3 col = studio(R) * 0.98;
 
-  // Two tight speculars: the hard white glints that make it wet.
+  // Two tight speculars: the hard glints that make it wet. These land on the
+  // glyph's steep flanks automatically, which is why the letters read.
   vec3 L1 = normalize(vec3(-0.40, 0.70, 0.58));
   vec3 L2 = normalize(vec3(0.55, -0.26, 0.50));
   float d1 = max(dot(N, normalize(L1 + V)), 0.0);
   float d2 = max(dot(N, normalize(L2 + V)), 0.0);
   float spec = pow(d1, 260.0) * 3.2 + pow(d1, 26.0) * 0.20
              + pow(d2, 170.0) * 1.6 + pow(d2, 20.0) * 0.10;
-  col += vec3(0.85, 0.93, 1.00) * spec * 0.75;
+  col += vec3(0.85, 0.93, 1.00) * spec * 0.45;
 
-  // Fresnel: a cold ice rim wherever the surface turns away from the viewer.
+  // Fresnel: a cold rim wherever the surface turns away from the viewer. This
+  // is shared too, so the letter edges glow the same way the pool's edge does.
   float fres = pow(1.0 - max(dot(N, V), 0.0), 4.5);
-  col += palette(0.94) * fres * 0.55;
+  col += metalBody(1.0) * fres * 0.40;
 
-  /*
-     Fusion. The metal is poured INTO the type: the displaced glyph is shaded as
-     polished chrome (not white paint), over the pool's own surface. Because the
-     mask is read through the warp, the chrome that reappears is the *distorted*
-     letterform — one body of liquid metal that happens to hold the shape of the
-     words.
-  */
-  /*
-     Chrome, not white paint. Polished metal is mostly DARK with a few very
-     bright bands — a flat bright fill made the letters dissolve into the pool
-     behind them. The tight horizon reflection is what keeps the letterform
-     readable while still looking like the same liquid as everything else.
-  */
-  float bandT = clamp(R.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 chromeType = mix(palette(0.80), palette(0.99),
-                        smoothstep(0.42, 0.88, bandT));
-  chromeType = mix(chromeType, vec3(0.99, 1.0, 1.0),
-                   smoothstep(0.10, 0.02, abs(bandT - 0.62)));
-  chromeType += palette(0.95) * fres * 0.14;
+  // Depth: the pool thickens toward the letters. A single value cue, applied to
+  // one surface, rather than a value split between two layers.
+  col *= mix(0.52, 1.0, smoothstep(0.0, 0.85, h));
 
-  /*
-     Value separation, not just hue. Type and pool were both being lit by the
-     same studio, so wherever the dye ran thick the two merged into one pale
-     mass and the word stopped being readable. The pool is now held down in
-     value and only the letterform carries the light — the metal is visible as
-     a darker liquid with the words bright inside it.
-  */
-  col *= 0.52;
-
-  float glyph = clamp(max(mWarp, mCore), 0.0, 1.0);
-  vec3 lit = mix(chromeType, vec3(0.93, 0.97, 1.0), 0.22);
-  col = mix(col, lit, glyph);
-
-  // Liquid film clinging to the letter edges, also warped with the type.
+  // The film of liquid clinging to the letter edges — the visible meniscus.
   float halo = maskHalo(uv);
   float rim = clamp(halo - maskAt(uv), 0.0, 1.0);
-  col += palette(0.98) * rim * 0.62;
+  col += metalBody(1.0) * rim * 0.45;
 
   /*
-     A defined body, not fog: the edge of the pool should be a surface. Where the
-     glyph is, alpha is high so the type is genuinely coated rather than merely
-     tinted — the metal owns the letters.
+     Alpha: one mask. The glyph is opaque, the pool fades as it thins, and the
+     meniscus sits between them. No layer is drawn over another, so there is no
+     seam where the type ends and the liquid begins.
   */
-  float body = smoothstep(0.07, 0.34, h) * uStrength;
-  float rimA = smoothstep(0.0, 0.45, rim) * 0.85 * uStrength;
-  // The chrome letter arrives fast and at full opacity — the DOM headline is
-  // faded out on the same curve, so the type is never drawn twice or halved.
-  float typeA = clamp(max(mWarp, mCore), 0.0, 1.0) * 0.97 * smoothstep(0.0, 0.35, uStrength);
-  float alpha = max(max(body, rimA), typeA);
-
+  float body = smoothstep(0.07, 0.34, dyeH);
+  float rimA = smoothstep(0.0, 0.45, rim) * 0.8;
+  float alpha = max(max(body, rimA), glyph * 0.97);
+  alpha *= uStrength;
 
   // The pool must not end on the canvas edge, or the crop reads as a rectangle.
   alpha *= smoothstep(0.0, 0.09, vUv.x) * smoothstep(1.0, 0.91, vUv.x)
