@@ -179,6 +179,7 @@ uniform float uTime;
 uniform float uAspect;
 uniform vec2 uPointer;
 uniform vec2 uPointerVel;
+uniform float uBubbleR;
 uniform float uPull;
 uniform float uFalloff;
 uniform float uAnchor;
@@ -187,40 +188,73 @@ ${NOISE}
 void main() {
   vec2 vel = texture2D(uVelocity, vUv).xy;
 
+  /*
+     ── the cursor is an air bubble rising through oil ──────────────────────
+
+     Not a hand dragging a puddle, and certainly not an attractor — it is a
+     DISPLACEMENT. An incompressible body moving through an incompressible fluid
+     cannot create or destroy volume, so it can only move the fluid out of its own
+     way: oil is pushed forward at the nose, slides around the sides, and is drawn
+     back in behind the tail. That closed loop is exactly the classic dipole
+
+         u(r) = (a² / r²) · [ 2 (V·r̂) r̂ − V ]
+
+     which is the potential-flow solution for a cylinder of radius a travelling at
+     V. It is divergence-free everywhere outside the body, which matters: the
+     projection step deletes any gradient it is given, so a field that is already
+     free of divergence is the only kind that survives being injected.
+
+     Because the bubble is small compared to the canvas, the whole gesture is
+     local. A cursor sweeping across the headline leaves no wake behind it — oil
+     closes over the path — which is what separates this from the drag model it
+     replaces.
+  */
   vec2 d = (vUv - uPointer) * vec2(uAspect, 1.0);
-  float fall = exp(-dot(d, d) * uFalloff);
+  float dist = length(d);
+  float rho = max(dist, uBubbleR);
+  vec2 rhat = d / rho;
 
-  // 1 — drag along the pointer's motion. This is the whole gesture.
-  vec2 dir = uPointerVel * vec2(uAspect, 1.0);
-  vel += dir * fall * uPull * uDt;
+  // Bubble velocity, in the same isotropic units as d.
+  vec2 V = uPointerVel * vec2(uAspect, 1.0);
+
+  // The dipole itself. 1/r² decay: nothing of this survives past a few radii.
+  vec2 dipole = (uBubbleR * uBubbleR) / (rho * rho) *
+                (2.0 * dot(V, rhat) * rhat - V);
 
   /*
-     2 — curl around the direction of travel. Divergence-free by construction, so
-     the pressure solve does not immediately flatten it, and it is what makes the
-     stretch curve rather than slide.
+     A short envelope on top of the 1/r² tail. The sim grid is coarse relative to a
+     6px bubble, so a tail hundreds of cells long would be sampled as stripes
+     rather than a smooth falloff; this keeps the displaced zone to a few bubble
+     radii, which is also how far real surface oil actually parts.
   */
-  vec2 side = vec2(-dir.y, dir.x);
-  vel += side * fall * 0.30 * uDt;
+  float w = exp(-dist * dist * uFalloff);
 
   /*
-     3 — a slow swirl where the oil actually is. Gated on the falloff, so it
-     exists only in the neighbourhood of the gesture and dies with it; the text is
-     the displaced medium now, and any field that survives forever is a permanent
-     deformation of the letters.
+     Blend the fluid TOWARD the dipole's velocity instead of adding an impulse. A
+     bubble cannot drag oil faster than it displaces it, and at high frame rates an
+     impulse would integrate to a different speed than at low ones. Mixing is
+     frame-rate independent once uDt is clamped, and it lets the field be exactly
+     zero the instant the bubble stops.
   */
-  vec2 sp = vUv * vec2(5.5 * uAspect, 5.5) + vec2(uTime * 0.06, -uTime * 0.05);
-  vec2 swirl = curlNoise(sp);
-  vel += swirl * fall * uPull * 0.22 * uDt;
+  vec2 target = dipole * uPull;
+  vel += (target - vel) * w * min(1.0, uDt * 14.0);
 
   /*
-     A light viscosity inside the glyphs, NOT a wall. It was 7.0 when the dye was a
-     separate pool being pinned in place; applied to the text itself that much
-     cancelled the force entirely. Small, it is what keeps the oil heavy.
+     A little churn at the rim. Perfect potential flow reads as a clean lens; real
+     oil breaks up at the contact line. Gated by the same envelope, so it dies with
+     the gesture rather than leaving a permanent swirl in the letters.
+  */
+  vec2 sp = vUv * vec2(9.0 * uAspect, 9.0) + vec2(uTime * 0.05, -uTime * 0.04);
+  vel += curlNoise(sp) * w * uPull * 0.10 * uDt;
+
+  /*
+     Viscosity inside the glyphs, not a wall. It keeps the oil heavy, and it is what
+     stops the dipole's forward push from tearing a letter apart at the nose.
   */
   float m = texture2D(uMask, vUv).r;
   vel *= 1.0 - m * uAnchor * uDt;
 
-  // Global damping keeps the whole field viscous and bounded.
+  // Global damping: the field must decay to exactly zero, or the letters never rest.
   vel *= 1.0 - uDamp * uDt;
 
   gl_FragColor = vec4(vel, 0.0, 1.0);

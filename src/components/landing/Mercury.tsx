@@ -41,19 +41,34 @@ import {
    change with screen size. Everything here is set for thick oil: heavy, slow,
    and reluctant to let go of its own shape.
 */
-/** Accel toward the pointer. */
-const PULL = 5.0;
-/** Falloff exponent of the attraction field; higher = tighter to the cursor. */
-const FALLOFF = 3.2;
+/**
+ * Radius of the air bubble, in canvas heights — the same isotropic units the
+ * force shader works in.
+ *
+ * The dot the user asked for is 6px. The bubble the OIL reacts to is
+ * deliberately larger than the dot: a 6px void would displace about three sim
+ * cells and be invisible. This is the radius of the fluid response, roughly a
+ * fifth of the headline's cap height, which is the relationship the brief
+ * actually describes — a small bubble, a wide parting of the oil around it.
+ */
+const BUBBLE_R = 0.075;
+/**
+ * How strongly the fluid is pulled toward the bubble's dipole velocity. Scaling
+ * this up makes the oil part faster and further; the dipole shape itself is
+ * exact potential flow and needs no tuning.
+ */
+const PULL = 0.055;
+/** Falloff exponent of the bubble envelope; higher = tighter to the cursor. */
+const FALLOFF = 120;
 /**
  * How much of the pointer's own motion is fed into the fluid. This is what makes
- * a fast pass drag the oil further and a slow one barely disturb it.
+ * a fast pass move the oil further and a slow one barely disturb it.
  */
-const DRAG = 0.55;
+const DRAG = 1.0;
 /** Velocity is bled away where the glyphs are: the oil holds its place. */
 const ANCHOR = 0.9;
 /** Global viscous damping of the velocity field. */
-const DAMP = 1.4;
+const DAMP = 2.2;
 /** Vorticity confinement: keeps curls rolling instead of diffusing. */
 const VORTICITY_STRENGTH = 9;
 /** Viscous diffusion coefficient per Jacobi step. */
@@ -65,14 +80,14 @@ const PRESSURE_STEPS = 18;
  * displacement. This is the effect's single strength control: the letters are
  * stretched by exactly this much and nothing else.
  */
-const OIL = 3.1;
+const OIL = 2.7;
 /**
  * Hard cap on the warp, in canvas heights. This is the legibility guarantee: no
  * pixel of a glyph may travel further than this from where the type drew it, so
  * the letters can lean and swell but can never come apart or leave the line.
  * 0.028 is a little over a third of the cap height of an 86px headline.
  */
-const REACH = 0.052;
+const REACH = 0.048;
 
 /**
  * Simulation rows. Sizing by the long edge gave a ~13:1 band only sixteen cells
@@ -101,6 +116,7 @@ type Pass = {
 
 export function Mercury() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bubbleRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -422,12 +438,35 @@ export function Mercury() {
         y: 1 - (e.clientY - r.top) / Math.max(r.height, 1),
       };
     };
+    /*
+       The dot is positioned in the host's coordinate space, not the canvas's: the
+       canvas is deliberately oversized (it hangs 50px above the type so the oil
+       has room to pool), and the dot must sit exactly on the cursor, not on the
+       matching point of an enlarged box.
+    */
+    const bubble = bubbleRef.current;
+    const moveBubble = (e: PointerEvent) => {
+      if (!bubble || !host) return;
+      const r = host.getBoundingClientRect();
+      bubble.style.transform = `translate3d(${e.clientX - r.left}px, ${
+        e.clientY - r.top
+      }px, 0) translate(-50%, -50%)`;
+      /*
+         Shown on the first move rather than on `pointerenter`: a pointer that
+         arrives already inside the target never fires the enter event, which left
+         the dot invisible on touch and on fast entry.
+      */
+      bubble.style.opacity = "1";
+    };
+
     const onMove = (e: PointerEvent) => {
       toUv(e);
       pointerSeen = 0;
+      moveBubble(e);
     };
     const onLeave = () => {
       pointerSeen = 99;
+      if (bubble) bubble.style.opacity = "0";
     };
     target.addEventListener("pointermove", onMove, { passive: true });
     target.addEventListener("pointerleave", onLeave);
@@ -656,7 +695,7 @@ export function Mercury() {
         units(advect, { uVelocity: 0, uSource: 1 });
         gl.uniform2f(advect.loc("uTexel"), 1 / sim.w, 1 / sim.h);
         gl.uniform1f(advect.loc("uDt"), dt);
-        gl.uniform1f(advect.loc("uDissipation"), 0.28);
+        gl.uniform1f(advect.loc("uDissipation"), 0.45);
       });
       swap();
 
@@ -738,6 +777,7 @@ export function Mercury() {
         gl.uniform1f(force.loc("uAspect"), aspect);
         gl.uniform2f(force.loc("uPointer"), pointer.x, pointer.y);
         gl.uniform2f(force.loc("uPointerVel"), pointerVel.x * DRAG, pointerVel.y * DRAG);
+        gl.uniform1f(force.loc("uBubbleR"), BUBBLE_R);
         gl.uniform1f(force.loc("uPull"), PULL * present * gate);
         gl.uniform1f(force.loc("uFalloff"), FALLOFF);
         gl.uniform1f(force.loc("uAnchor"), ANCHOR);
@@ -758,7 +798,7 @@ export function Mercury() {
           bind(0, src.tex);
           units(smoothP, { uSource: 0 });
           gl.uniform2f(smoothP.loc("uTexel"), 1 / sim.w, 1 / sim.h);
-          gl.uniform1f(smoothP.loc("uRadius"), i === 0 ? 1.7 : 2.6);
+          gl.uniform1f(smoothP.loc("uRadius"), i === 0 ? 2.2 : 3.4);
         });
         src = dst;
       }
@@ -827,17 +867,59 @@ export function Mercury() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="pointer-events-none absolute inset-x-0 z-30 w-full"
-      /*
-         Explicit height, not inset stretching: a <canvas> carries an intrinsic
-         aspect ratio from its width/height attributes, and with height:auto
-         that wins over top/bottom, pinning the element to the 96px line box and
-         clipping every strand the fluid tried to grow.
-      */
-      style={{ top: "-50px", height: "calc(100% + 62px)" }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 z-30 w-full"
+        /*
+           Explicit height, not inset stretching: a <canvas> carries an intrinsic
+           aspect ratio from its width/height attributes, and with height:auto
+           that wins over top/bottom, pinning the element to the 96px line box and
+           clipping every strand the fluid tried to grow.
+        */
+        style={{ top: "-50px", height: "calc(100% + 62px)" }}
+      />
+      {/*
+         The bubble itself: a 6px dot that tracks the cursor. It is the visible
+         body whose parting of the oil the canvas above renders, and it is what
+         makes the deformation legible — without a marked centre, oil bulging away
+         from nothing reads as the letters wobbling rather than as something
+         moving through them.
+
+         Its own fixed layer with `will-change: transform`, driven straight from
+         the pointer handler, so it stays glued to the cursor rather than lagging
+         one animation frame behind the fluid it causes.
+      */}
+      <span
+        ref={bubbleRef}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 z-40 size-1.5 rounded-full will-change-transform"
+        style={{
+          /*
+             No opacity transition here on purpose. A transition on this element
+             stalled at progress 0 in a software renderer — the inline value was
+             "1" while the computed value stayed "0" — so the bubble never
+             appeared at all. It is a pointer affordance, and a cursor should
+             appear immediately anyway.
+          */
+          opacity: 0,
+          /*
+             `translate3d` rather than left/top: the dot is composited, so moving
+             it never touches layout. The -50% centres it on the cursor.
+
+             Painted as a HOLE, not a highlight. An air bubble in oil is a void
+             with a bright meniscus film around it, so the centre is the page
+             background and the ring is white. A white fill would vanish the
+             moment the bubble crossed a letter — white on white — which is
+             exactly where it needs to be seen.
+          */
+          transform: "translate3d(-50%, -50%, 0)",
+          background: "#0A0A0A",
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.9), 0 0 0 2.5px rgba(215,239,255,0.28), 0 0 9px 2px rgba(215,239,255,0.35)",
+        }}
+      />
+    </>
   );
 }
