@@ -53,6 +53,25 @@ import {
  */
 const BUBBLE_R = 0.075;
 /**
+ * Radius of the TRAILING body, as a fraction of the leading one. It is the 12px
+ * circle against the 30px one, so the fluid partings are nested rather than
+ * identical.
+ */
+const BUBBLE_R_TRAIL = 0.030;
+/**
+ * How far behind the cursor the small circle rides, in CSS px.
+ */
+const TRAIL_DIST = 20;
+/**
+ * Spring constants for the trailing circle, per second.
+ *
+ * `TRAIL_PULL` is the stiffness that returns it to TRAIL_DIST; `TRAIL_DAMP` is
+ * what stops it orbiting the cursor instead of settling. Underdamped, this reads
+ * as a second bubble being dragged through the oil.
+ */
+const TRAIL_PULL = 26;
+const TRAIL_DAMP = 9;
+/**
  * How strongly the fluid is pulled toward the bubble's dipole velocity. Scaling
  * this up makes the oil part faster and further; the dipole shape itself is
  * exact potential flow and needs no tuning.
@@ -117,6 +136,7 @@ type Pass = {
 export function Mercury() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bubbleRef = useRef<HTMLSpanElement | null>(null);
+  const trailRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -417,9 +437,35 @@ export function Mercury() {
     window.addEventListener("resize", resize);
 
     /* ── pointer ────────────────────────────────────────────────────── */
+    /*
+       TWO bodies follow the cursor.
+
+       The large circle sits on the cursor itself. The small one is dragged behind
+       it on a spring, so it lags at a fixed-ish distance while the cursor moves and
+       settles back beside it when the cursor stops. That lag is the whole reason
+       the pair reads as two objects in a liquid rather than as a cursor and its
+       ornament: the gap between them changes as the gesture changes, and the oil
+       spanning that gap is strained by both.
+
+       Each body carries its own position and velocity, because the force shader
+       gives each its own dipole — the trailing circle moves through the field the
+       leading one has already displaced, which is what makes the two partings
+       interact.
+    */
     const pointer = { x: 0.5, y: 0.5 };
     const pointerVel = { x: 0, y: 0 };
+    // Trailing-circle velocity in canvas uv, and its previous uv for differencing.
+    const trailVelU = { x: 0, y: 0 };
+    const prevTrail = { u: 0.5, v: 0.5 };
     let pointerTarget = { x: 0.5, y: 0.5 };
+    /*
+       The trailing circle, in the host's pixel space so its distance is a real
+       offset the eye can check: TRAIL_DIST is the gap asked for, and TRAIL_LAG
+       decides how hard it is pulled back toward that ring.
+    */
+    const trail = { x: 0, y: 0 };
+    const trailVel = { x: 0, y: 0 };
+    let trailSeeded = false;
     /*
        Starts "long ago", not at zero. At zero the drive gate opens on the very
        first frame and a phantom cursor sits at the centre of the canvas, pulling
@@ -427,6 +473,15 @@ export function Mercury() {
        stop moving. The effect must begin in the untouched state.
     */
     let pointerSeen = 99; // seconds since the pointer last moved
+    /*
+       Whether the pointer is ON the headline at all — separate from whether it is
+       MOVING. The oil strands belong to the bubbles, so they persist while the
+       cursor rests but must leave when it does; gating them on `pointerSeen`
+       would snatch them away the moment the user stopped moving, and not gating
+       them at all would strand them at the last position the cursor occupied.
+    */
+    let hovered = false;
+    let hover = 0;
     let present = 0; // 0..1 — ramps the whole effect, so it never snaps
     let gate = 0; // 0..1 — how hard the cursor is currently driving the fluid
 
@@ -445,28 +500,45 @@ export function Mercury() {
        matching point of an enlarged box.
     */
     const bubble = bubbleRef.current;
+    const trailEl = trailRef.current;
     const moveBubble = (e: PointerEvent) => {
-      if (!bubble || !host) return;
+      if (!host) return;
       const r = host.getBoundingClientRect();
-      bubble.style.transform = `translate3d(${e.clientX - r.left}px, ${
-        e.clientY - r.top
-      }px, 0) translate(-50%, -50%)`;
+      const px = e.clientX - r.left;
+      const py = e.clientY - r.top;
+      if (bubble) {
+        bubble.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`;
+        /*
+           Shown on the first move rather than on `pointerenter`: a pointer that
+           arrives already inside the target never fires the enter event, which
+           left the rings invisible on touch and on fast entry.
+        */
+        bubble.style.opacity = "1";
+      }
+      if (trailEl) trailEl.style.opacity = "1";
       /*
-         Shown on the first move rather than on `pointerenter`: a pointer that
-         arrives already inside the target never fires the enter event, which left
-         the dot invisible on touch and on fast entry.
+         Seed the trailing circle on first contact, so it does not sweep in from
+         the origin of the box on the very first frame.
       */
-      bubble.style.opacity = "1";
+      if (!trailSeeded) {
+        trail.x = px - TRAIL_DIST;
+        trail.y = py;
+        trailSeeded = true;
+      }
     };
 
     const onMove = (e: PointerEvent) => {
       toUv(e);
       pointerSeen = 0;
+      hovered = true;
       moveBubble(e);
     };
     const onLeave = () => {
       pointerSeen = 99;
+      hovered = false;
       if (bubble) bubble.style.opacity = "0";
+      if (trailEl) trailEl.style.opacity = "0";
+      trailSeeded = false;
     };
     target.addEventListener("pointermove", onMove, { passive: true });
     target.addEventListener("pointerleave", onLeave);
@@ -613,7 +685,85 @@ export function Mercury() {
       pointer.x += (pointerTarget.x - pointer.x) * ease;
       pointer.y += (pointerTarget.y - pointer.y) * ease;
 
+      /*
+         ── the trailing circle ───────────────────────────────────────────
+         A spring in the host's pixel space, deliberately solved in pixels rather
+         than in the solver's uv: TRAIL_DIST is a distance the brief states in px,
+         so it must not change with the canvas size.
+
+         The rest position is 20px from the cursor, on the side the trailing
+         circle already sits on. When the cursor moves, the target sweeps around
+         and the spring has to travel to catch up, which produces the lag; when it
+         stops, the gap relaxes to exactly TRAIL_DIST.
+      */
+      if (trailSeeded) {
+        const hw = host.clientWidth || 1;
+        const hh = host.clientHeight || 1;
+        const cx = pointer.x * hw;
+        const cy = (1 - pointer.y) * hh;
+        let ox = trail.x - cx;
+        let oy = trail.y - cy;
+        let od = Math.hypot(ox, oy);
+        if (od < 1e-3) {
+          // No direction to hold yet: park it to the left of the cursor.
+          ox = -1;
+          oy = 0;
+          od = 1;
+        }
+        const tx = cx + (ox / od) * TRAIL_DIST;
+        const ty = cy + (oy / od) * TRAIL_DIST;
+        /*
+           Semi-implicit Euler with a clamped step. The spring is stiff enough to
+           recover from a fast swipe, so an unclamped step would overshoot.
+        */
+        const step = Math.min(uiDt, 1 / 30);
+        trailVel.x += (tx - trail.x) * TRAIL_PULL * step;
+        trailVel.y += (ty - trail.y) * TRAIL_PULL * step;
+        const damp = Math.exp(-TRAIL_DAMP * step);
+        trailVel.x *= damp;
+        trailVel.y *= damp;
+        trail.x += trailVel.x * step;
+        trail.y += trailVel.y * step;
+        if (trailEl) {
+          trailEl.style.transform = `translate3d(${trail.x}px, ${trail.y}px, 0) translate(-50%, -50%)`;
+        }
+      } else {
+        trail.x = pointer.x * (host.clientWidth || 1) - TRAIL_DIST;
+        trail.y = (1 - pointer.y) * (host.clientHeight || 1);
+      }
+
+      /*
+         Trailing-circle velocity, from its own motion. It is what the second
+         dipole uses, so the small bubble parts the oil independently of the
+         large one instead of being carried along as a passenger.
+      */
+      const hostW = Math.max(host.clientWidth, 1);
+      const hostH = Math.max(host.clientHeight, 1);
+      const trailU = trail.x / hostW;
+      const trailV = 1 - trail.y / hostH;
+
+      /*
+         The trailing circle's own velocity, in canvas uv per second. It is what
+         the second dipole uses, so the small bubble parts the oil independently of
+         the large one instead of being carried along as a passenger.
+      */
       const idle = pointerSeen > 0.4;
+
+      /*
+         The trailing circle's own velocity, in canvas uv per second. It is what
+         the second dipole uses, so the small bubble parts the oil independently of
+         the large one instead of being carried along as a passenger. Zeroed once
+         the pointer rests, for the same reason the leading one is: a stale velocity
+         keeps injecting force the user never asked for.
+      */
+      const tdx = trailU - prevTrail.u;
+      const tdy = trailV - prevTrail.v;
+      prevTrail.u = trailU;
+      prevTrail.v = trailV;
+      const tke = Math.min(1, uiDt * 9);
+      trailVelU.x += ((idle ? 0 : tdx / Math.max(uiDt, 1e-3)) - trailVelU.x) * tke;
+      trailVelU.y += ((idle ? 0 : tdy / Math.max(uiDt, 1e-3)) - trailVelU.y) * tke;
+
       const vx = idle ? 0 : (pointer.x - prevX) / Math.max(uiDt, 1e-3);
       const vy = idle ? 0 : (pointer.y - prevY) / Math.max(uiDt, 1e-3);
       // Smooth the drag, so one jittery frame cannot yank the fluid.
@@ -643,6 +793,14 @@ export function Mercury() {
       */
       const want = pointerSeen < 0.4 ? 1 : 0;
       gate += (want - gate) * Math.min(1, uiDt * (want > gate ? 10 : 1.6));
+
+      /*
+         The strands follow the pointer in and out. Fast in, slow out: arriving
+         should feel instant, and leaving should let the oil trail off rather than
+         blink away.
+      */
+      hover += ((hovered ? 1 : 0) - hover) *
+        Math.min(1, uiDt * (hovered ? 7 : 2.2));
 
       // ── the canvas only takes over once the entrance has landed ────
       if (settled) present += (1 - present) * Math.min(1, uiDt * 3.0);
@@ -775,9 +933,20 @@ export function Mercury() {
         gl.uniform1f(force.loc("uDt"), dt);
         gl.uniform1f(force.loc("uTime"), time);
         gl.uniform1f(force.loc("uAspect"), aspect);
-        gl.uniform2f(force.loc("uPointer"), pointer.x, pointer.y);
-        gl.uniform2f(force.loc("uPointerVel"), pointerVel.x * DRAG, pointerVel.y * DRAG);
-        gl.uniform1f(force.loc("uBubbleR"), BUBBLE_R);
+        /*
+           Both bodies. Array uniforms need the element location, which is why the
+           helper below exists — `getUniformLocation("uBubblePos")` alone returns
+           null for an array and silently leaves the shader reading zeroes.
+        */
+        gl.uniform2fv(force.loc("uBubblePos[0]"), [
+          pointer.x, pointer.y,
+          trailU, trailV,
+        ]);
+        gl.uniform2fv(force.loc("uBubbleVel[0]"), [
+          pointerVel.x * DRAG, pointerVel.y * DRAG,
+          trailVelU.x * DRAG, trailVelU.y * DRAG,
+        ]);
+        gl.uniform1fv(force.loc("uBubbleR[0]"), [BUBBLE_R, BUBBLE_R_TRAIL]);
         gl.uniform1f(force.loc("uPull"), PULL * present * gate);
         gl.uniform1f(force.loc("uFalloff"), FALLOFF);
         gl.uniform1f(force.loc("uAnchor"), ANCHOR);
@@ -824,6 +993,15 @@ export function Mercury() {
       gl.uniform1f(disp.loc("uStrength"), present);
       gl.uniform1f(disp.loc("uOil"), OIL);
       gl.uniform1f(disp.loc("uReach"), REACH);
+      /*
+         The oil drawn out toward the bubbles. `uBubblePull` is a presence channel,
+         not a per-gesture fade: the strands belong to the type, so they are there
+         whenever the canvas is, and they grow only as the pointer approaches.
+      */
+      gl.uniform2fv(disp.loc("uBubblePos[0]"), [pointer.x, pointer.y, trailU, trailV]);
+      gl.uniform1fv(disp.loc("uBubbleR[0]"), [BUBBLE_R, BUBBLE_R_TRAIL]);
+      gl.uniform1f(disp.loc("uBubblePull"), present * hover);
+      gl.uniform1f(disp.loc("uTime"), time);
       gl.uniform1f(disp.loc("uAspect"), canvas.width / Math.max(canvas.height, 1));
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -881,43 +1059,59 @@ export function Mercury() {
         style={{ top: "-50px", height: "calc(100% + 62px)" }}
       />
       {/*
-         The bubble itself: a 6px dot that tracks the cursor. It is the visible
-         body whose parting of the oil the canvas above renders, and it is what
-         makes the deformation legible — without a marked centre, oil bulging away
-         from nothing reads as the letters wobbling rather than as something
-         moving through them.
+         The two circles. Both WHITE, as asked: the large one rides the cursor and
+         the small one trails it at TRAIL_DIST.
 
-         Its own fixed layer with `will-change: transform`, driven straight from
-         the pointer handler, so it stays glued to the cursor rather than lagging
-         one animation frame behind the fluid it causes.
+         They are drawn as white rings with a soft white halo rather than as solid
+         discs. A filled white 30px disc would be a blob sitting on top of the
+         headline; a ring reads as a bubble's meniscus — the same thing the shader
+         is doing in the oil underneath — and it stays legible where it crosses a
+         letter, because the gap between the ring and the stroke is what carries the
+         shape. White on white only disappears when a solid disc overlaps a stroke;
+         a ring over a stroke still reads as a ring.
+
+         Both are driven from the pointer handler and the frame loop respectively,
+         so neither is a frame behind the oil it causes.
       */}
       <span
         ref={bubbleRef}
         aria-hidden
-        className="pointer-events-none absolute left-0 top-0 z-40 size-1.5 rounded-full will-change-transform"
+        className="pointer-events-none absolute left-0 top-0 z-40 rounded-full will-change-transform"
         style={{
           /*
              No opacity transition here on purpose. A transition on this element
              stalled at progress 0 in a software renderer — the inline value was
-             "1" while the computed value stayed "0" — so the bubble never
-             appeared at all. It is a pointer affordance, and a cursor should
-             appear immediately anyway.
+             "1" while the computed value stayed "0" — so the circle never appeared
+             at all.
           */
           opacity: 0,
+          width: 30,
+          height: 30,
+          border: "1.5px solid rgba(255,255,255,0.95)",
           /*
-             `translate3d` rather than left/top: the dot is composited, so moving
-             it never touches layout. The -50% centres it on the cursor.
-
-             Painted as a HOLE, not a highlight. An air bubble in oil is a void
-             with a bright meniscus film around it, so the centre is the page
-             background and the ring is white. A white fill would vanish the
-             moment the bubble crossed a letter — white on white — which is
-             exactly where it needs to be seen.
+             A ring, not a fill: the inside is transparent so the oil and the type
+             show through the bubble exactly as they would through a real one.
           */
-          transform: "translate3d(-50%, -50%, 0)",
-          background: "#0A0A0A",
+          background:
+            "radial-gradient(circle, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 68%)",
           boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.9), 0 0 0 2.5px rgba(215,239,255,0.28), 0 0 9px 2px rgba(215,239,255,0.35)",
+            "0 0 10px 1px rgba(255,255,255,0.35), inset 0 0 8px rgba(255,255,255,0.25)",
+          transform: "translate3d(-50%, -50%, 0)",
+        }}
+      />
+      <span
+        ref={trailRef}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 z-40 rounded-full will-change-transform"
+        style={{
+          opacity: 0,
+          width: 12,
+          height: 12,
+          border: "1.25px solid rgba(255,255,255,0.9)",
+          background:
+            "radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 70%)",
+          boxShadow: "0 0 6px 1px rgba(255,255,255,0.3)",
+          transform: "translate3d(-50%, -50%, 0)",
         }}
       />
     </>

@@ -177,9 +177,14 @@ uniform vec2 uTexel;
 uniform float uDt;
 uniform float uTime;
 uniform float uAspect;
-uniform vec2 uPointer;
-uniform vec2 uPointerVel;
-uniform float uBubbleR;
+/*
+  TWO bodies, not one. The pointers are arrays so the fluid responds to both the
+  30px bubble and the 12px one trailing it, which is what lets the oil between
+  them be pulled toward the pair rather than toward a single point.
+*/
+uniform vec2 uBubblePos[2];
+uniform float uBubbleR[2];
+uniform vec2 uBubbleVel[2];
 uniform float uPull;
 uniform float uFalloff;
 uniform float uAnchor;
@@ -189,67 +194,65 @@ void main() {
   vec2 vel = texture2D(uVelocity, vUv).xy;
 
   /*
-     ── the cursor is an air bubble rising through oil ──────────────────────
+     ── each cursor circle is an air bubble rising through oil ──────────────
 
-     Not a hand dragging a puddle, and certainly not an attractor — it is a
-     DISPLACEMENT. An incompressible body moving through an incompressible fluid
-     cannot create or destroy volume, so it can only move the fluid out of its own
-     way: oil is pushed forward at the nose, slides around the sides, and is drawn
-     back in behind the tail. That closed loop is exactly the classic dipole
+     A displacement, not a drag and certainly not an attractor. An incompressible
+     body moving through an incompressible fluid cannot create or destroy volume,
+     so it can only move the fluid out of its own way: oil is pushed forward at the
+     nose, slides around the sides, and is drawn back in behind the tail. That
+     closed loop is the classic dipole
 
-         u(r) = (a² / r²) · [ 2 (V·r̂) r̂ − V ]
+         u(r) = (a^2 / r^2) * [ 2 (V.rhat) rhat - V ]
 
      which is the potential-flow solution for a cylinder of radius a travelling at
-     V. It is divergence-free everywhere outside the body, which matters: the
-     projection step deletes any gradient it is given, so a field that is already
-     free of divergence is the only kind that survives being injected.
-
-     Because the bubble is small compared to the canvas, the whole gesture is
-     local. A cursor sweeping across the headline leaves no wake behind it — oil
-     closes over the path — which is what separates this from the drag model it
-     replaces.
+     V. It is divergent-free outside the body, and that matters: the projection
+     step deletes any gradient it is given, so a field that is already free of
+     divergence is the only kind that survives being injected.
   */
-  vec2 d = (vUv - uPointer) * vec2(uAspect, 1.0);
-  float dist = length(d);
-  float rho = max(dist, uBubbleR);
-  vec2 rhat = d / rho;
+  for (int i = 0; i < 2; i++) {
+    vec2 d = (vUv - uBubblePos[i]) * vec2(uAspect, 1.0);
+    float dist = length(d);
+    float rho = max(dist, uBubbleR[i]);
+    vec2 rhat = d / rho;
 
-  // Bubble velocity, in the same isotropic units as d.
-  vec2 V = uPointerVel * vec2(uAspect, 1.0);
+    // Bubble velocity, in the same isotropic units as d.
+    vec2 V = uBubbleVel[i] * vec2(uAspect, 1.0);
 
-  // The dipole itself. 1/r² decay: nothing of this survives past a few radii.
-  vec2 dipole = (uBubbleR * uBubbleR) / (rho * rho) *
-                (2.0 * dot(V, rhat) * rhat - V);
+    // The dipole itself. 1/r^2 decay: nothing of this survives past a few radii.
+    vec2 dipole = (uBubbleR[i] * uBubbleR[i]) / (rho * rho) *
+                  (2.0 * dot(V, rhat) * rhat - V);
+
+    /*
+       A short envelope on top of the 1/r^2 tail. The sim grid is coarse relative
+       to a bubble a few dozen pixels across, so a tail hundreds of cells long
+       would be sampled as stripes rather than a smooth falloff; this keeps the
+       displaced zone to a few bubble radii, which is how far real surface oil
+       actually parts.
+    */
+    float w = exp(-dist * dist * uFalloff);
+
+    /*
+       Blend the fluid TOWARD the dipole's velocity instead of adding an impulse.
+       A bubble cannot drag oil faster than it displaces it, and at high frame
+       rates an impulse would integrate to a different speed than at low ones.
+    */
+    vec2 target = dipole * uPull;
+    vel += (target - vel) * w * min(1.0, uDt * 14.0);
+  }
 
   /*
-     A short envelope on top of the 1/r² tail. The sim grid is coarse relative to a
-     6px bubble, so a tail hundreds of cells long would be sampled as stripes
-     rather than a smooth falloff; this keeps the displaced zone to a few bubble
-     radii, which is also how far real surface oil actually parts.
-  */
-  float w = exp(-dist * dist * uFalloff);
-
-  /*
-     Blend the fluid TOWARD the dipole's velocity instead of adding an impulse. A
-     bubble cannot drag oil faster than it displaces it, and at high frame rates an
-     impulse would integrate to a different speed than at low ones. Mixing is
-     frame-rate independent once uDt is clamped, and it lets the field be exactly
-     zero the instant the bubble stops.
-  */
-  vec2 target = dipole * uPull;
-  vel += (target - vel) * w * min(1.0, uDt * 14.0);
-
-  /*
-     A little churn at the rim. Perfect potential flow reads as a clean lens; real
+     A little churn at the rims. Perfect potential flow reads as a clean lens; real
      oil breaks up at the contact line. Gated by the same envelope, so it dies with
      the gesture rather than leaving a permanent swirl in the letters.
   */
   vec2 sp = vUv * vec2(9.0 * uAspect, 9.0) + vec2(uTime * 0.05, -uTime * 0.04);
-  vel += curlNoise(sp) * w * uPull * 0.10 * uDt;
+  vec2 dBig = (vUv - uBubblePos[0]) * vec2(uAspect, 1.0);
+  float wBig = exp(-dot(dBig, dBig) * uFalloff);
+  vel += curlNoise(sp) * wBig * uPull * 0.10 * uDt;
 
   /*
-     Viscosity inside the glyphs, not a wall. It keeps the oil heavy, and it is what
-     stops the dipole's forward push from tearing a letter apart at the nose.
+     Viscosity inside the glyphs, not a wall. It keeps the oil heavy, and it is
+     what stops the dipole's forward push from tearing a letter apart at the nose.
   */
   float m = texture2D(uMask, vUv).r;
   vel *= 1.0 - m * uAnchor * uDt;
@@ -376,6 +379,14 @@ uniform float uOil;       // displacement per unit of flow speed
 uniform float uReach;     // hard cap on that displacement, in canvas heights
 
 /*
+  The two cursor circles, for the oil that the type throws toward them.
+*/
+uniform vec2 uBubblePos[2];
+uniform float uBubbleR[2];
+uniform float uBubblePull; // 0..1 — how strongly the type is drawn out, right now
+uniform float uTime;
+
+/*
   Nine-tap mean of the warp field. The field is smoothed on its own grid already,
   but one tap per screen pixel still picks up that grid; this closes the gap so
   the warp varies continuously across a letterform.
@@ -399,6 +410,130 @@ vec2 flow(vec2 uv) {
   resolution, so its own filter footprint is already half a screen pixel.
 */
 float glyph(vec2 uv) { return texture2D(uMask, uv).r; }
+
+/* Cheap value noise, used only to break up the filaments. */
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x),
+             mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+/*
+  ── oil drawn out of the type toward the bubbles ──────────────────────────────
+
+  This is the part that reads as oil on water rather than as a glow. Three things
+  do the work:
+
+   1. The strands are not radial rays. Each pixel measures how far it is from the
+      LINE joining the type to the bubble, so the oil gathers into a few curved
+      threads instead of a uniform halo.
+
+   2. Every thread is width-modulated along its length by noise, so it swells and
+      necks the way a real filament does when it is pulled. A constant-width line
+      looks like a laser beam; a necked one looks like oil.
+
+   3. Coverage is the MASK sampled along the strand, not a synthetic shape. The
+      white therefore still has the letterform's own texture rather than being an
+      additive aura floating over the page.
+
+  Everything is WHITE and premultiplied like the type itself, so the whole hero
+  stays a single-colour image: the type, the strands and the bubbles are all the
+  same ink.
+*/
+float strands(vec2 uv, vec2 centre, float radius) {
+  vec2 iso = vec2(uAspect, 1.0);
+
+  // Offset from the bubble, in isotropic units (one unit = one canvas height).
+  vec2 p = (uv - centre) * iso;
+  float dist = length(p);
+
+  /*
+     Band. Inside the bubble's own body the oil has been pushed away, so there is
+     nothing to draw; outside the outer radius the pull has died out. Rejecting
+     early keeps this off the critical path for most of the canvas.
+  */
+  float outer = radius + 0.340;
+  if (dist > outer || dist < radius + 0.004) return 0.0;
+
+  /*
+     ── the strands are the TYPE, spilling toward the bubble ─────────────────
+
+     Every pixel in the band asks one question: is there ink UPSTREAM of me, in
+     the direction away from the bubble? If there is, this pixel is on a thread
+     that has been drawn out of the type toward the bubble.
+
+     That inversion is what makes it read as oil rather than as a glow. The
+     material is real letterform — so a thread only exists where a letter can
+     supply it, it tapers because the walk runs out of samples, and it points at
+     the bubble because the walk is along the line to it. An earlier version
+     built threads outward from the bubble instead, which fired rays into empty
+     space and looked like a starburst, because nothing in it knew where the ink
+     was.
+  */
+  vec2 dir = -p / max(dist, 1e-5);   // unit vector, pointing AT the bubble
+  float maxBack = 0.300;             // how far upstream a thread can reach
+
+  float acc = 0.0;
+  for (int i = 1; i <= 8; i++) {
+    float t = float(i) / 8.0;
+    /*
+       Walk upstream. The weight falls with t, so a pixel far from any ink is
+       faint and a pixel right beside a letter is nearly solid: the thread fades
+       out along its length instead of ending in a hard edge.
+
+       A soft union rather than max(): max() makes every thread as opaque as the
+       nearest glyph sample, which is what produced the shard-like edges. Taking a
+       saturating sum keeps the thread's own density gradient, so it reads as
+       thinned oil rather than as a cut-out.
+    */
+    vec2 q = uv - (dir * maxBack * t) / iso;
+    acc += glyph(q) * (1.0 - t * 0.62) * 0.30;
+  }
+  acc = 1.0 - exp(-acc * 2.2);
+  if (acc <= 0.002) return 0.0;
+
+  /*
+     Threading. acc on its own is a soft smear; splitting it into strands is what
+     makes it oil. The noise is indexed by the ANGLE around the bubble, so the
+     cuts run lengthwise along the pull rather than across it — which is how a
+     filament breaks up, not how a shadow does.
+  */
+  float ang = atan(p.y, p.x);
+  float cell = floor(ang * 3.6);
+  float seed = h21(vec2(cell + 23.0, 9.0));
+  float frac = fract(ang * 3.6);
+  float across = (frac - 0.5) * 2.0;
+
+  // A soft bump across each thread, so edges stay anti-aliased.
+  float profile = 1.0 - smoothstep(0.10, 1.0, abs(across));
+  profile = pow(profile, 0.75);
+
+  // Swell and neck along the length.
+  float neck = 0.55 + 0.45 * vn(vec2(cell * 4.0, dist * 18.0 - uTime * 0.28));
+
+  // Not every wedge carries a thread, and the gaps are what make it read as oil.
+  /*
+     Density, varied along the thread as well as between threads. Without the
+     along-length term the threads all survive to the band edge and the fan closes
+     into a solid wedge; with it they break up the way thinned oil actually does.
+  */
+  float breakup = 0.45 + 0.55 * vn(vec2(cell * 3.0 + 9.0, dist * 11.0 - uTime * 0.22));
+  float exists = smoothstep(0.12, 0.42, seed) * breakup;
+
+  /*
+     Radial falloff. Strongest near the type end of the band and thinning as it
+     approaches the bubble, which is the direction the surface tension gradient
+     actually pulls: a thread is fat where it leaves the mass and thin where it
+     is about to break.
+  */
+  float radial = smoothstep(radius + 0.004, radius + 0.055, dist) *
+                 (1.0 - smoothstep(outer - 0.115, outer, dist));
+
+  return acc * profile * neck * exists * radial;
+}
 
 void main() {
   /*
@@ -438,7 +573,30 @@ void main() {
 
   float alpha = clamp(a, 0.0, 1.0) * uStrength;
 
+  /*
+     The oil pulled out toward each bubble. Both circles get the same treatment;
+     the larger one is drawn a little stronger because it is the body the fluid
+     actually answers to.
+  */
+  float oil = 0.0;
+  oil += strands(vUv, uBubblePos[0], uBubbleR[0]) * 1.05;
+  oil += strands(vUv, uBubblePos[1], uBubbleR[1]) * 0.62;
+  oil = clamp(oil, 0.0, 1.0) * uBubblePull * 1.1;
+
+  /*
+     The type and the oil are the same ink. Added in premultiplied space so a
+     strand crossing a stem cannot punch a hole in it, and clamped so overlapping
+     strands cannot drive alpha past 1 and fringe.
+  */
+  /*
+     Remap so the thread cores are solid white and only their shoulders are
+     translucent. The brief asks for white, not tint: a value that stays around 0.4
+     reads as grey haze on black, which is exactly the colourless look to avoid.
+  */
+  oil = smoothstep(0.05, 0.55, oil);
+  float total = clamp(alpha + oil * (1.0 - alpha), 0.0, 1.0);
+
   const vec3 WHITE = vec3(1.0);
-  gl_FragColor = vec4(WHITE * alpha, alpha);
+  gl_FragColor = vec4(WHITE * total, total);
 }
 `;
