@@ -61,7 +61,7 @@ export function Hero() {
          the headline off the top of the screen. Starting from the top instead
          means every offset below is measured from a known edge.
       */
-      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-14"
+      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-11"
     >
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -137,19 +137,22 @@ export function Hero() {
                  the headline, so the headline sits exactly one eye above nothing —
                  no dead air.
               */
-              "--eye-alpha": "0.78",
-              "--eye-size": "clamp(150px, 22vw, 300px)",
+              "--eye-alpha": "0.5",
+              "--eye-size": "clamp(150px, 16vw, 226px)",
               /*
-                 `--eye-zone` is only the room ABOVE the headline. The eye hangs
-                 exactly 40% of its height below the headline's top edge (see
-                 HeroEye), so the zone carries the other 60%: the eye's rendered
-                 height is 0.9375 × eye-size and the artwork has ~11% empty space
-                 above the oval, so the zone is eye-size × 0.9375 × 0.6, rounded —
-                 0.5625 × eye-size. Sized any larger it is dead air that pushes the
-                 headline down, which is the bug being fixed; any smaller and the
-                 eye's top edge collides with the badge.
+                 `--eye-zone` is derived from the eye rather than guessed, because
+                 the eye and the headline are now stacked without touching and the
+                 gap between them has to come out to exactly the artwork's own
+                 empty band. In the artwork's coordinates (viewBox 300 tall) the
+                 oval runs y 34…248 and the alpha ramp is zero below y≈220, so of
+                 the eye's rendered height (0.9375 × eye-size) only 0.602 of
+                 eye-size ever carries ink above the headline. The zone is that
+                 plus 14px, which leaves the eye's bottom tenth sitting exactly
+                 where "Read the market" begins — the band is invisible, so the eye
+                 appears to rise out of the type without a single letter dimmed.
+                 Bigger zones are dead air that pushes the header down.
               */
-              "--eye-zone": "clamp(94px, 9.8vw, 140px)",
+              "--eye-zone": "calc(0.602 * var(--eye-size) + 14px)",
               "--headline-h": "clamp(52px, 6.7vw, 100px)",
             } as React.CSSProperties
           }

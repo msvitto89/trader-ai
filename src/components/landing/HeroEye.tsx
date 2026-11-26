@@ -6,10 +6,10 @@ import { armEyeAudio, playBlink, playPop } from "./eye/Sound";
 /**
  * HeroEye — a large eye that lives BEHIND the "Read the market" headline.
  *
- * The eye is not a decoration placed above the type. Its lower portion extends
- * behind the headline and dissolves into the page through a vertical alpha
- * gradient, so the pair reads as one object emerging from behind the typography
- * rather than as a sticker above a heading.
+ * The eye is not a decoration placed above the type. It rises from behind the
+ * headline when hovered — that is what the pop and the retracting pop-down are
+ * for — and when it settles it hangs just above the type, with the lowest tenth
+ * of the artwork empty so the two never touch or smear into each other.
  *
  * ── why the fade is an alpha mask, not a clipped box ────────────────────────
  * A rectangular clip leaves a visible horizontal edge, and on a black page a hard
@@ -197,7 +197,15 @@ export function HeroEye() {
         data-hero-eye
         className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 opacity-0"
         style={{
-          bottom: "calc(-0.375 * var(--eye-size))",
+          /*
+             Derived, not eyeballed. In the artwork the oval ends at 248/300 of the
+             SVG's height, the SVG is 0.9375 × eye-size tall, and the alpha ramp
+             hits zero at 220/300 — so hanging the box by 0.229 × eye-size puts
+             that zero-alpha line exactly on the headline's top edge. Everything
+             below it is the invisible tenth, and it is what sits behind the type,
+             so the eye clears "Read the market" by construction at any size.
+          */
+          bottom: "calc(-0.229 * var(--eye-size))",
           width: "var(--eye-size)",
           willChange: "transform, opacity",
         }}
@@ -254,13 +262,14 @@ function EyeArt({
           x2="0"
           y2="248"
         >
-          <stop offset="0" stopColor="#fff" stopOpacity="0.95" />
-          <stop offset="0.22" stopColor="#fff" stopOpacity="0.88" />
-          <stop offset="0.42" stopColor="#fff" stopOpacity="0.62" />
-          <stop offset="0.56" stopColor="#fff" stopOpacity="0.32" />
-          <stop offset="0.66" stopColor="#fff" stopOpacity="0.11" />
-          {/* The lowest 30% of the oval: nothing at all. */}
-          <stop offset="0.70" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.40" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.62" stopColor="#fff" stopOpacity="0.97" />
+          <stop offset="0.74" stopColor="#fff" stopOpacity="0.86" />
+          <stop offset="0.80" stopColor="#fff" stopOpacity="0.62" />
+          <stop offset="0.85" stopColor="#fff" stopOpacity="0.30" />
+          {/* The lowest 10% of the oval: nothing at all. */}
+          <stop offset="0.90" stopColor="#fff" stopOpacity="0" />
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
         {/*
