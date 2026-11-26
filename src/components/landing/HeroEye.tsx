@@ -201,6 +201,25 @@ export function HeroEye() {
       />
 
       {/*
+         A halo, not a decoration. On a page this dark a white object has nothing
+         to sit on: it reads as pasted on rather than lit. A wide, very faint ice
+         bloom behind the iris gives the eye a source and separates it from the
+         black without ever resolving into a visible shape — it lives in the same
+         layout-free overlay, so it cannot move anything either.
+      */}
+      <div
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+        style={{
+          top: "var(--eye-anchor)",
+          width: "calc(1.9 * var(--eye-size))",
+          height: "calc(1.9 * var(--eye-size))",
+          transform: "translate(-50%, -22%)",
+          background:
+            "radial-gradient(circle at 50% 46%, rgba(141,220,247,0.16) 0%, rgba(141,220,247,0.07) 34%, rgba(61,143,201,0.03) 56%, transparent 72%)",
+        }}
+      />
+
+      {/*
          The eye itself: an absolutely positioned box hanging off the headline's
          top edge. Its lower 30% overlaps the type, which is the point — the
          headline is z-20 against this z-10, so the letters paint on top and the
@@ -244,21 +263,40 @@ function EyeArt({
   irisRef: React.Ref<SVGGElement>;
   lidRef: React.Ref<SVGGElement>;
 }) {
+  /*
+     Iris fibres. They are what turns a dark circle into an eye at this size: a
+     ring of very low-opacity strokes radiating out of the pupil, longer at the
+     sides than at the top, broken up so no two neighbours match. Generated once
+     from a fixed seed rather than hand-written, so the angles stay tidy.
+  */
+  const fibres = Array.from({ length: 44 }, (_, i) => {
+    const a = (i / 44) * Math.PI * 2;
+    const wobble = Math.sin(i * 12.9898) * 0.5 + 0.5; // deterministic 0..1
+    const r1 = 15 + wobble * 4;
+    const r2 = 30 + wobble * 9;
+    return {
+      x1: 160 + Math.cos(a) * r1,
+      y1: 140 + Math.sin(a) * r1,
+      x2: 160 + Math.cos(a) * r2,
+      y2: 140 + Math.sin(a) * r2,
+      o: 0.10 + wobble * 0.16,
+    };
+  });
+
   return (
     <svg viewBox="0 0 320 300" fill="none" aria-hidden className="block w-full">
       <defs>
         {/*
-           The vertical alpha ramp, anchored with `userSpaceOnUse` to the OVAL's own
-           extent (y 34..248), NOT to the 0..300 viewBox. That distinction is the
-           whole point: a viewBox-anchored ramp still carries ~16% alpha where the
-           oval ends, which leaves a soft-but-readable cut-off along the bottom
-           curve. Anchored here, the last stop lands exactly on the oval's lowest
-           pixel and reaches zero, so the eye dissolves into the page instead of
-           ending.
+           The fade-out, and the reason the last version looked cheap: an alpha
+           ramp that reaches zero in two stops draws its own edge. A band of
+           constant falloff reads as a straight horizontal line across the eye no
+           matter how soft the numbers are.
 
-           Weighted heavy through the middle on purpose: a straight 90→10 line
-           makes the whole eye look like a ghost, whereas holding the core bright
-           and dissolving only the last third makes it look solid AND buried.
+           So the falloff is a curve with twelve stops and a long, thin tail. The
+           eye is at full strength through its upper two thirds, then loses opacity
+           the way light falls off — quickly at first, then almost imperceptibly —
+           and is mathematically zero from 70% down, which is the band that sits
+           behind the headline.
         */}
         <linearGradient
           id="eyeFade"
@@ -269,23 +307,94 @@ function EyeArt({
           y2="248"
         >
           <stop offset="0" stopColor="#fff" stopOpacity="1" />
-          <stop offset="0.34" stopColor="#fff" stopOpacity="1" />
-          <stop offset="0.56" stopColor="#fff" stopOpacity="0.95" />
-          <stop offset="0.66" stopColor="#fff" stopOpacity="0.80" />
-          {/* 30% of the eye's height below the headline's top edge: nothing at all. */}
-          <stop offset="0.70" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.26" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.36" stopColor="#fff" stopOpacity="0.99" />
+          <stop offset="0.44" stopColor="#fff" stopOpacity="0.96" />
+          <stop offset="0.50" stopColor="#fff" stopOpacity="0.90" />
+          <stop offset="0.55" stopColor="#fff" stopOpacity="0.81" />
+          <stop offset="0.59" stopColor="#fff" stopOpacity="0.69" />
+          <stop offset="0.63" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="0.66" stopColor="#fff" stopOpacity="0.40" />
+          <stop offset="0.685" stopColor="#fff" stopOpacity="0.26" />
+          <stop offset="0.70" stopColor="#fff" stopOpacity="0.14" />
+          <stop offset="0.71" stopColor="#fff" stopOpacity="0.06" />
+          <stop offset="0.72" stopColor="#fff" stopOpacity="0" />
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
+
         {/*
-           A faint ice tint at the top and a cooler foot. Pure #FFF at these alphas
-           reads flat; the two-degree gradient is what makes it feel like a lit
-           surface rather than a grey shape.
+           The foot of the eye needs a fade that follows the SHAPE, not a
+           horizontal band. A straight ramp multiplied over a curved silhouette
+           always leaves the same tell: a level line where the alpha hits zero,
+           crossing the flank and meeting the outline in a soft right-angle. The
+           fix is a second, radial falloff centred on the eye itself, so the alpha
+           contours curve with the body and the dissolve reads as depth instead of
+           as a ruler line. Both masks multiply, which is exactly what is wanted.
         */}
-        <linearGradient id="eyeBody" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#F2FAFF" />
-          <stop offset="0.5" stopColor="#FFFFFF" />
-          <stop offset="1" stopColor="#CFE4F0" />
+        <radialGradient
+          id="eyeVignette"
+          gradientUnits="userSpaceOnUse"
+          cx="160"
+          cy="128"
+          r="132"
+        >
+          <stop offset="0" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.62" stopColor="#fff" stopOpacity="1" />
+          <stop offset="0.82" stopColor="#fff" stopOpacity="0.92" />
+          <stop offset="0.93" stopColor="#fff" stopOpacity="0.62" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0.18" />
+        </radialGradient>
+
+        {/* The lit surface: ice at the crown, white through the middle. */}
+        <linearGradient id="eyeBody" x1="0" y1="0" x2="0.25" y2="1">
+          <stop offset="0" stopColor="#F7FCFF" />
+          <stop offset="0.34" stopColor="#FFFFFF" />
+          <stop offset="0.72" stopColor="#EAF6FD" />
+          <stop offset="1" stopColor="#C9E0EE" />
         </linearGradient>
+
+        {/* A rim of light along the top edge — the single strongest "lit object" cue. */}
+        <linearGradient id="eyeRim" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" />
+          <stop offset="0.5" stopColor="#CFEAF9" stopOpacity="0.25" />
+          <stop offset="1" stopColor="#CFEAF9" stopOpacity="0" />
+        </linearGradient>
+
+        {/* Shadow pooling where the eyeball meets the lid, to give the sphere volume. */}
+        <radialGradient id="eyeShade" cx="0.5" cy="0.34" r="0.62">
+          <stop offset="0.45" stopColor="#0B1216" stopOpacity="0" />
+          <stop offset="0.86" stopColor="#0B1216" stopOpacity="0.16" />
+          <stop offset="1" stopColor="#0B1216" stopOpacity="0.30" />
+        </radialGradient>
+
+        <radialGradient id="irisDepth" cx="0.42" cy="0.34" r="0.78">
+          <stop offset="0" stopColor="#33424E" />
+          <stop offset="0.48" stopColor="#141B21" />
+          <stop offset="0.86" stopColor="#070A0C" />
+          <stop offset="1" stopColor="#020405" />
+        </radialGradient>
+
+        <radialGradient id="pupilFill" cx="0.5" cy="0.42" r="0.72">
+          <stop offset="0" stopColor="#0A0F13" />
+          <stop offset="1" stopColor="#000000" />
+        </radialGradient>
+
+        <radialGradient id="irisLight" cx="0.36" cy="0.28" r="0.6">
+          <stop offset="0" stopColor="#8FD8F7" stopOpacity="0.34" />
+          <stop offset="0.7" stopColor="#8DDCF7" stopOpacity="0.05" />
+          <stop offset="1" stopColor="#8DDCF7" stopOpacity="0" />
+        </radialGradient>
+
+        {/* The soft contact shadow under the iris, so it sits ON the sclera. */}
+        <radialGradient id="irisShadow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0.72" stopColor="#0B1216" stopOpacity="0.34" />
+          <stop offset="1" stopColor="#0B1216" stopOpacity="0" />
+        </radialGradient>
+
+        <clipPath id="eyeClip">
+          <path d="M 40 140 C 110 34 210 34 280 140 C 210 246 110 246 40 140 Z" />
+        </clipPath>
+
         <mask
           id="eyeMask"
           maskUnits="userSpaceOnUse"
@@ -295,38 +404,114 @@ function EyeArt({
           height="300"
         >
           <rect x="0" y="0" width="320" height="300" fill="url(#eyeFade)" />
+          <rect
+            x="0"
+            y="0"
+            width="320"
+            height="300"
+            fill="url(#eyeVignette)"
+            style={{ mixBlendMode: "multiply" }}
+          />
         </mask>
+
+        {/*
+           A whisper of blur, and no more. At 350px a mathematically crisp path
+           reads as a sticker, but too much blur does something worse: it smears
+           ink past the silhouette, and once that ink meets the alpha ramp at the
+           foot it looks like fog rather than an eye receding into the dark. Half a
+           pixel is enough to take the vector edge off and not enough to smear.
+        */}
+        <filter id="eyeSoft" x="-6%" y="-6%" width="112%" height="112%">
+          <feGaussianBlur stdDeviation="0.55" />
+        </filter>
       </defs>
 
       <g mask="url(#eyeMask)">
-        {/*
-           The blinking group. Anything inside squashes together, which is the
-           blink: the aperture closes to a line and reopens, and the iris flattening
-           with the lid is exactly right.
-        */}
         <g
           ref={lidRef}
           data-eye-lid
           style={{ transformBox: "fill-box", transformOrigin: "center" }}
         >
-          <path
-            d="M 40 140 C 110 34 210 34 280 140 C 210 246 110 246 40 140 Z"
-            fill="url(#eyeBody)"
-          />
-          {/*
-             The iris. A dark disc on a white body is the whole character of the
-             eye, so it is the only element with any detail: an outer disc, a
-             slightly lifted inner one for depth, and a single off-centre
-             highlight — the one cue that reads as "alive".
-          */}
-          <g
-            ref={irisRef}
-            data-eye-iris
-            style={{ transformBox: "fill-box", transformOrigin: "center" }}
-          >
-            <circle cx="160" cy="140" r="45" fill="#07090A" />
-            <circle cx="160" cy="140" r="27" fill="#141A1F" />
-            <circle cx="147" cy="126" r="9" fill="#fff" fillOpacity="0.9" />
+          {/* Body, softly edged. */}
+          <g filter="url(#eyeSoft)">
+            <path
+              d="M 40 140 C 110 34 210 34 280 140 C 210 246 110 246 40 140 Z"
+              fill="url(#eyeBody)"
+            />
+          </g>
+
+          <g clipPath="url(#eyeClip)">
+            {/* Volume: shadow gathering toward the lid. */}
+            <path
+              d="M 40 140 C 110 34 210 34 280 140 C 210 246 110 246 40 140 Z"
+              fill="url(#eyeShade)"
+            />
+            {/* Rim light along the crown. */}
+            <path
+              d="M 62 128 C 118 46 202 46 258 128"
+              stroke="url(#eyeRim)"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              fill="none"
+            />
+
+            {/* Iris. */}
+            <g
+              ref={irisRef}
+              data-eye-iris
+              style={{ transformBox: "fill-box", transformOrigin: "center" }}
+            >
+              <circle cx="160" cy="140" r="56" fill="url(#irisShadow)" />
+              <circle cx="160" cy="140" r="46" fill="url(#irisDepth)" />
+              {/* Limbal ring: a darker edge, which is what makes an iris read round. */}
+              <circle
+                cx="160"
+                cy="140"
+                r="45.4"
+                fill="none"
+                stroke="#05090B"
+                strokeOpacity="0.85"
+                strokeWidth="2.2"
+              />
+              {/* Fibres. */}
+              <g stroke="#9FC9DA" strokeWidth="0.9" strokeLinecap="round">
+                {fibres.map((f, i) => (
+                  <line
+                    key={i}
+                    x1={f.x1}
+                    y1={f.y1}
+                    x2={f.x2}
+                    y2={f.y2}
+                    strokeOpacity={f.o}
+                  />
+                ))}
+              </g>
+              {/* A cool wash across the upper iris. */}
+              <circle cx="160" cy="140" r="45" fill="url(#irisLight)" />
+              {/* Pupil. */}
+              <circle cx="160" cy="140" r="19" fill="url(#pupilFill)" />
+              <circle
+                cx="160"
+                cy="140"
+                r="19"
+                fill="none"
+                stroke="#000"
+                strokeOpacity="0.5"
+                strokeWidth="1.4"
+              />
+              {/* Two catchlights: one broad and soft, one sharp. The pair is what
+                  makes the eye look wet rather than painted. */}
+              <circle cx="145" cy="123" r="11.5" fill="#fff" fillOpacity="0.95" />
+              <circle cx="145" cy="123" r="19" fill="#fff" fillOpacity="0.10" />
+              <circle cx="176" cy="158" r="4.2" fill="#fff" fillOpacity="0.5" />
+            </g>
+
+            {/* The lid's shadow falling across the top of the iris. */}
+            <path
+              d="M 40 140 C 110 34 210 34 280 140 C 250 92 200 74 160 74 C 120 74 70 92 40 140 Z"
+              fill="#0B1216"
+              fillOpacity="0.10"
+            />
           </g>
         </g>
       </g>

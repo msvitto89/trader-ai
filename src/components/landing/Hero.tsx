@@ -61,7 +61,14 @@ export function Hero() {
          the headline off the top of the screen. Starting from the top instead
          means every offset below is measured from a known edge.
       */
-      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-11"
+      /*
+         `z-0` here is load-bearing: the fixed nav lives at z-50 in its own tree,
+         and without a stacking context of its own the hero's z-10 eye and z-30
+         hover trigger were able to paint over the nav — the badge pill and its
+         ping dot ended up drawn across the nav's bottom edge. A stacking context
+         on the section pins every one of those layers beneath it.
+      */
+      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-20 pt-[104px]"
     >
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -81,7 +88,25 @@ export function Hero() {
         }}
       />
 
-      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(10,10,10,0.72)_0%,rgba(10,10,10,0.3)_26%,rgba(10,10,10,0.34)_56%,rgba(10,10,10,0.82)_100%)]" />
+      {/*
+         The graded wash that makes the type sit in a pool of light.
+
+         It is deliberately smooth: the previous version had a stop at 26% with a
+         different slope on each side, and on an 8-bit black page that slope change
+         is visible as a horizontal seam across the whole header — the line used to
+         cut straight through the eye and read as a rendering fault. Monotonic stops
+         with small steps across the whole height have no seam to see.
+      */}
+      <div className="pointer-events-none absolute inset-0 -z-[4] bg-[linear-gradient(to_bottom,rgba(10,10,10,0.74)_0%,rgba(10,10,10,0.62)_6%,rgba(10,10,10,0.5)_12%,rgba(10,10,10,0.4)_19%,rgba(10,10,10,0.34)_27%,rgba(10,10,10,0.31)_36%,rgba(10,10,10,0.33)_46%,rgba(10,10,10,0.4)_56%,rgba(10,10,10,0.52)_66%,rgba(10,10,10,0.66)_77%,rgba(10,10,10,0.82)_88%,rgba(10,10,10,0.94)_100%)]" />
+
+      {/* A cool bloom behind the headline: the light the eye is lit by. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 -z-[4] h-[62vh]"
+        style={{
+          background:
+            "radial-gradient(52% 68% at 50% 34%, rgba(141,220,247,0.10) 0%, rgba(61,143,201,0.05) 42%, rgba(61,143,201,0.015) 66%, transparent 82%)",
+        }}
+      />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-[4] h-72 bg-gradient-to-b from-transparent via-black/55 to-black" />
 
       {/* 5 — type */}
@@ -137,7 +162,7 @@ export function Hero() {
                  the headline, so the headline sits exactly one eye above nothing —
                  no dead air.
               */
-              "--eye-alpha": "0.5",
+              "--eye-alpha": "0.65",
               /*
                  Big, as asked: 38vw up to 400px on a wide desktop. The eye is an
                  overlay, so this size costs the page nothing in layout.

@@ -268,9 +268,14 @@ export function CandleField() {
       {/* Warm wash — light without a sun */}
       <div className="absolute left-1/2 top-[58%] size-[52rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(215,239,255,0.10),rgba(215,239,255,0.03)_46%,transparent_72%)] blur-[24px]" />
 
-      {/* Chart grid */}
+      {/*
+         Chart grid. Masked so it only exists where candles exist: unmasked, its
+         1px lines ran straight across the eye and the headline, and at this
+         contrast a level line crossing a bright object reads as a seam in the
+         artwork rather than as chart furniture.
+      */}
       <div
-        className="absolute inset-0 opacity-[0.055]"
+        className="absolute inset-0 opacity-[0.055] [mask-image:linear-gradient(to_bottom,transparent_0%,transparent_34%,black_62%,black_100%)]"
         style={{
           backgroundImage:
             "repeating-linear-gradient(to bottom, rgba(255,255,255,0.9) 0 1px, transparent 1px 13.5%)",
@@ -279,7 +284,9 @@ export function CandleField() {
 
       {/* A light band that sweeps the series, so the field breathes even when
           the pointer is elsewhere. */}
-      <div className="candle-sweep" />
+      {/* Masked like the grid: sweeping light belongs over the candles, not over
+          the eye and the headline. */}
+      <div className="candle-sweep [mask-image:linear-gradient(to_bottom,transparent_0%,transparent_36%,black_64%,black_100%)]" />
 
       {/* The candle field */}
       <div
