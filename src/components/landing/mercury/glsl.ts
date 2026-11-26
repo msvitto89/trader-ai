@@ -459,6 +459,13 @@ void main() {
   /* Mask, sampled through the warped, twisted coordinate. This is what makes the
      letters deform: whole strokes bend toward the cursor and curl with it. */
   float mWarp = maskRaw(twisted + w);
+  /*
+     A second, barely-displaced sample. Substituting its high values over the
+     warped one gives the letter a defined core: the outline can strain as much
+     as the flow wants, but the body of each stroke keeps a solid edge, which is
+     what keeps the headline readable at full strength.
+  */
+  float mCore = maskRaw(uv + w * 0.22);
 
   float h = smoothDye(uv);
 
@@ -510,14 +517,24 @@ void main() {
      readable while still looking like the same liquid as everything else.
   */
   float bandT = clamp(R.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 chromeType = mix(palette(0.74), palette(0.97),
+  vec3 chromeType = mix(palette(0.80), palette(0.99),
                         smoothstep(0.42, 0.88, bandT));
-  chromeType = mix(chromeType, vec3(0.98, 0.995, 1.0),
+  chromeType = mix(chromeType, vec3(0.99, 1.0, 1.0),
                    smoothstep(0.10, 0.02, abs(bandT - 0.62)));
-  chromeType += vec3(0.85, 0.93, 1.00) * spec * 0.16;
-  chromeType += palette(0.90) * fres * 0.22;
+  chromeType += palette(0.95) * fres * 0.14;
 
-  col = mix(col, chromeType, clamp(mWarp, 0.0, 1.0));
+  /*
+     Value separation, not just hue. Type and pool were both being lit by the
+     same studio, so wherever the dye ran thick the two merged into one pale
+     mass and the word stopped being readable. The pool is now held down in
+     value and only the letterform carries the light — the metal is visible as
+     a darker liquid with the words bright inside it.
+  */
+  col *= 0.52;
+
+  float glyph = clamp(max(mWarp, mCore), 0.0, 1.0);
+  vec3 lit = mix(chromeType, vec3(0.93, 0.97, 1.0), 0.22);
+  col = mix(col, lit, glyph);
 
   // Liquid film clinging to the letter edges, also warped with the type.
   float halo = maskHalo(uv);
@@ -533,8 +550,9 @@ void main() {
   float rimA = smoothstep(0.0, 0.45, rim) * 0.85 * uStrength;
   // The chrome letter arrives fast and at full opacity — the DOM headline is
   // faded out on the same curve, so the type is never drawn twice or halved.
-  float typeA = clamp(mWarp, 0.0, 1.0) * 0.97 * smoothstep(0.0, 0.35, uStrength);
+  float typeA = clamp(max(mWarp, mCore), 0.0, 1.0) * 0.97 * smoothstep(0.0, 0.35, uStrength);
   float alpha = max(max(body, rimA), typeA);
+
 
   // The pool must not end on the canvas edge, or the crop reads as a rectangle.
   alpha *= smoothstep(0.0, 0.09, vUv.x) * smoothstep(1.0, 0.91, vUv.x)

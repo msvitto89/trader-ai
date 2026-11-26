@@ -66,26 +66,26 @@ const VISCOSITY_NU = 0.007;
 const VISCOSITY_STEPS = 1;
 const PRESSURE_STEPS = 18;
 /** Dye seeded from the glyphs per second. */
-const INFLOW = 7.0;
+const INFLOW = 6.0;
 /** Spring rate pulling the dye back onto the glyphs. */
 const RETURN = 0.42;
 /** How fast stretched mercury evaporates once unsupported. */
 const DYE_DISSIPATION = 0.55;
 /** Relief used for the surface normal: higher = more violent highlights. */
-const RELIEF = 2.1;
+const RELIEF = 1.7;
 /**
  * Peak rotation, in radians, that the type is twisted through at the pointer.
  * Applied in the display pass rather than the solver: a rotation about a point
  * is close to curl-free, so the pressure projection would flatten it.
  */
-const TWIST = 0.055;
+const TWIST = 0.026;
 /**
  * How hard the letterforms are displaced by the fluid's own velocity. This is
  * what fuses type and metal — the glyphs are sampled through the flow, so they
- * shear and stretch with it instead of merely being covered by it. Kept small:
- * the first attempt read as the word being torn apart rather than strained.
+ * shear and stretch with it instead of merely being covered by it. Deliberately
+ * restrained: legibility of the headline outranks the strength of the effect.
  */
-const TEXT_WARP = 0.16;
+const TEXT_WARP = 0.055;
 /**
  * Simulation rows. Sizing by the long edge gave a ~13:1 band only sixteen cells
  * tall, which read as blocks; the row count is what actually needs guaranteeing.
