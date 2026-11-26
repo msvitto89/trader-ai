@@ -22,7 +22,7 @@ interface KineticTextProps {
   delay?: number;
   /** Scroll parallax strength; 0 disables it. */
   parallax?: number;
-  /** Marks this line as the hover target for the liquid warp filter. */
+  /** Marks this line as the source surface for the mercury fluid. */
   fluidTarget?: boolean;
   as?: "h1" | "h2" | "p";
 }

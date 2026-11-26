@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { BrandMarquee } from "./BrandMarquee";
 import { CandleField } from "./CandleField";
-import { FluidShader } from "./FluidShader";
+import { Mercury } from "./Mercury";
 import { KineticText } from "./KineticText";
 import { FadeInUp } from "./reveal";
 import { Magnetic } from "./interactive";
@@ -55,9 +55,6 @@ export function Hero() {
       id="about"
       className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
     >
-      {/* Hover-driven liquid warp for the headline. Renders off-screen. */}
-      <FluidShader />
-
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
         ref={objectWrapRef}
@@ -91,12 +88,17 @@ export function Hero() {
           </span>
         </FadeInUp>
 
-        <KineticText
-          text="Read the market"
-          fluidTarget
-          delay={0.18}
-          className="max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
-        />
+        {/* The headline is the source of the mercury: the fluid renders over
+            the type and is relaxed back onto it, so the letters never move. */}
+        <div className="relative w-full">
+          <Mercury />
+          <KineticText
+            text="Read the market"
+            fluidTarget
+            delay={0.18}
+            className="relative z-20 mx-auto block max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
+          />
+        </div>
 
         <KineticText
           as="p"
