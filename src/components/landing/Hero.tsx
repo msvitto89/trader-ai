@@ -6,6 +6,7 @@ import { ArrowRight, ShieldCheck } from "lucide-react";
 import { BrandMarquee } from "./BrandMarquee";
 import { CandleField } from "./CandleField";
 import { KineticText } from "./KineticText";
+import { HeroEye } from "./HeroEye";
 import { FadeInUp } from "./reveal";
 import { Magnetic } from "./interactive";
 
@@ -52,7 +53,15 @@ export function Hero() {
   return (
     <section
       id="about"
-      className="relative z-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-24 pt-32"
+      /*
+         `justify-center` is what makes the hero's own height unpredictable: the
+         content block is taller than the viewport, so the section grows past
+         `min-h-screen`, the centring has nothing to distribute, and the extra
+         height lands ABOVE the content — pushing anything anchored to the top of
+         the headline off the top of the screen. Starting from the top instead
+         means every offset below is measured from a known edge.
+      */
+      className="relative z-0 flex min-h-screen flex-col items-center justify-start overflow-hidden px-6 pb-24 pt-24"
     >
       {/* 1 — interactive candle field: the artwork, and the subject */}
       <div
@@ -88,15 +97,48 @@ export function Hero() {
         </FadeInUp>
 
         {/*
-           The headline is plain white type on the page. The fluid surface that
-           used to deform it has been removed; the only cursor treatment left is
-           the pair of circles in the root layout.
+           The headline, with the eye behind it.
+
+           The wrapper is the positioning context for both: the eye is anchored to
+           the headline's top edge and the type is the last child, so the type
+           genuinely paints in front of the lower part of the eye rather than the
+           eye being pasted over it with a fake gradient.
+
+           The top padding is what makes room for the eye. Without it the eye would
+           have to live in the 36px gap between the badge above and the headline,
+           which cannot hold anything large enough to be the subject. The space is
+           reserved whether or not the eye is showing, so the headline never moves
+           and nothing around it reflows when the eye pops.
         */}
-        <KineticText
-          text="Read the market"
-          delay={0.18}
-          className="relative z-20 mx-auto block w-full max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
-        />
+        {/*
+           The eye's size and the room reserved for it are one decision, so they
+           live in one place. `--eye-zone` is the height the eye is guaranteed: the
+           badge above eats most of the section's own padding, which left the
+           headline only a few dozen pixels of air on a 900px-tall screen, far too
+           little for anything that is meant to be the subject.
+
+           Sizes are in vw with clamps so the relationship between the eye and the
+           headline holds from a phone to a wide desktop. The eye's height is
+           0.9375 × its width (the artwork's aspect), and the zone is that height
+           less the part designed to hang behind the headline.
+        */}
+        <div
+          className="relative w-full pt-[var(--eye-zone)]"
+          style={
+            {
+              "--eye-size": "clamp(150px, 23vw, 330px)",
+              "--eye-zone": "clamp(78px, 12.5vw, 178px)",
+              "--headline-h": "clamp(52px, 6.7vw, 100px)",
+            } as React.CSSProperties
+          }
+        >
+          <HeroEye />
+          <KineticText
+            text="Read the market"
+            delay={0.18}
+            className="relative z-20 mx-auto block w-full max-w-4xl text-center text-[42px] font-medium leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl md:text-[86px]"
+          />
+        </div>
 
         <KineticText
           as="p"
